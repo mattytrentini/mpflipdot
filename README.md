@@ -1,0 +1,92 @@
+# mpflipdot
+
+A minimal MicroPython driver for [Hanover Displays](https://www.hanoverdisplays.com/) flip-dot signs,
+aimed at a Raspberry Pi Pico with an RS485 adapter. No dependencies beyond MicroPython itself.
+
+> **Status:** early but working. Verified on a 20x14 sign from a Pico W with the Waveshare Pico-2CH-RS485 (see
+> [Tested hardware](#tested-hardware)). The 84x7 sign has not been tested yet. See [PLAN.md](PLAN.md) for protocol notes and design.
+
+## Features
+
+- Configurable bus address, width, height (and upside-down mounting) per sign
+- Clear / fill the display
+- Start / stop the manufacturer's test mode (broadcast, address 0)
+- Set a single dot on/off while retaining all others
+- Set many dots (or the whole display) in one update
+
+## Usage
+
+```python
+from mpflipdot import FlipDot, open_uart
+
+uart = open_uart(0, tx=0, rx=1)          # any UART id / pins
+sign = FlipDot(uart, address=6, width=20, height=14, row_offset=1)   # see "Sign quirks" below
+
+sign.clear()
+sign.set_pixel(10, 3, True)
+sign.set_pixels([(0, 0, 1), (1, 1, 1), (2, 2, 1)])   # one frame sent
+sign.test(True)                                      # manufacturer test mode
+sign.test(False)
+```
+
+Other options: `row_offset=1` if the sign's top row is bit 1 instead of bit 0, `flip=True` (sign mounted
+upside-down; rotates the picture 180° so (0, 0) stays your top-left), `auto_show=False` (batch changes, then call `sign.show()`), `de_pin=Pin(n, Pin.OUT)` for RS485
+adapters without automatic direction control, `min_gap_ms=300` (see below). Every change resends the whole frame, because the protocol has no
+per-dot command. `set_pixels` sends just one frame for the whole batch. Addresses are 0-15 (one hex digit on the
+wire). Several signs on one bus: create one `FlipDot` per address sharing the same UART.
+
+## Tested hardware
+
+| | |
+|---|---|
+| Board | Raspberry Pi Pico W, MicroPython 1.29.0 (the Pico 2 W loads and runs the driver; not run against a sign) |
+| RS485 | Waveshare Pico-2CH-RS485, channel 0 (UART0, GP0/GP1), sign data red on A, black on B. No direction pin needed |
+| Sign | 20x14, rotary switch SW2 on 5, 24 V / 5 A supply |
+| Verified | `fill`, `clear`, `set_pixel` (state retained), `set_pixels`, `test(True/False)`, `flip=True` (an L at (0,0) appeared in the opposite corner), 0.3 s between frames and the `min_gap_ms` guard (a 0.2 s loop was slowed to 0.3 s and every row showed) |
+| Not yet tested | the 84x7 sign, `de_pin`, several signs on one bus |
+
+## Sign quirks
+
+These came out of testing on the 20x14 sign and may differ on other signs, so check yours:
+
+- **Address is the rotary switch plus 1.** Switch on 5 means `address=6`. Address 0 is broadcast, and test mode always uses it.
+- **Row offset.** On the 20x14 sign the top row is bit 1 of each column, not bit 0, so use `row_offset=1`.
+  With `row_offset=0` the bottom row stays off. If a row is missing on your sign, try a different offset.
+- **All-zero frames are ignored.** A frame with no dots set does nothing, so a plain "clear" would never take effect.
+  When a frame would be all zero, `show()` sets one bit that lights no dot (bit 0 with `row_offset`, or the first
+  spare bit above the rows), and the display clears as expected. The 84x7 sign is untested.
+- **Power it properly.** A 24 V / 1 A supply made the sign drop frames at random, which looked like a signalling
+  problem. A 24 V / 5 A supply fixed it. If frames go missing, check the supply before the wiring.
+- **Update rate.** Wait at least about 0.3 s between frames. At 0.2 s the sign skipped frames. One frame takes about
+  0.18 s just to send at 4800 baud (84x7 frames are the same size or smaller, so should do no worse). The driver
+  enforces this: `min_gap_ms=300` makes a send wait until that long after the previous one, so a fast loop is slowed
+  down, not dropped, and the last update always lands. Use `min_gap_ms=0` to turn it off.
+- **USB-RS485 adapters on a computer** (for debugging): keep the port open for a few seconds after the last write,
+  or the final frame can be lost.
+
+## Hardware
+
+- Raspberry Pi Pico W or Pico 2 W running MicroPython
+- [Waveshare Pico-2CH-RS485](https://www.waveshare.com/pico-2ch-rs485.htm) (SP3485): channel 0 = UART0 on GP0/GP1, channel 1 = UART1 on GP4/GP5
+- Hanover Displays flip-dot sign, 4800 baud serial, powered from a **24 V / 5 A** supply. A 24 V / 1 A supply made it drop frames
+  at random, so don't skimp on current (see [Sign quirks](#sign-quirks))
+- MicroPython **1.29.0** (tested on the Pico W). Older releases are untested; roughly 1.20+ is expected to work
+  (`mip` install and `UART.flush()`, which is only used with `de_pin`), but that hasn't been verified.
+
+## Install
+
+```
+mpremote mip install github:simonprickett/mpflipdot
+```
+
+or, on the board: `import mip; mip.install("github:simonprickett/mpflipdot")`. Or just copy `mpflipdot.py` to the board.
+
+Run the tests (CPython, no hardware): `python3 -m unittest discover -s tests`.
+
+## Acknowledgements
+
+Protocol details were worked out by studying [pyflipdot](https://pypi.org/project/pyflipdot/).
+
+## License
+
+[MIT](LICENSE)
