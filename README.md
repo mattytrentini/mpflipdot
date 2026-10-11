@@ -4,7 +4,7 @@ A minimal MicroPython driver for [Hanover Displays](https://www.hanoverdisplays.
 aimed at a Raspberry Pi Pico with an RS485 adapter. No dependencies beyond MicroPython itself.
 
 > **Status:** early but working. Verified on a 20x14 sign from a Pico W with the Waveshare Pico-2CH-RS485 (see
-> [Tested hardware](#tested-hardware)). The 84x7 sign has not been tested yet. See [PLAN.md](PLAN.md) for protocol notes and design.
+> [Tested hardware](#tested-hardware)). The Pico 2 W and the 84x7 sign have not been tested yet. See [PLAN.md](PLAN.md) for protocol notes and design.
 
 ## Features
 
@@ -35,15 +35,22 @@ adapters without automatic direction control, `min_gap_ms=300` (see below). Ever
 per-dot command. `set_pixels` sends just one frame for the whole batch. Addresses are 0-15 (one hex digit on the
 wire). Several signs on one bus: create one `FlipDot` per address sharing the same UART.
 
+## Examples
+
+- `examples/basic.py`: clear, single dots, a batch update and test mode.
+- `examples/demo.py`: loops through patterns (sweeps, boxes, checkerboard, diagonal wipe, sparkle, flash) as fast as
+  the sign allows. Run it with `mpremote run examples/demo.py`; edit `W`, `H` and `address` first for your sign.
+  Stop it with Ctrl-C, or `mpremote soft-reset` if it's detached.
+
 ## Tested hardware
 
 | | |
 |---|---|
-| Board | Raspberry Pi Pico W, MicroPython 1.29.0 (the Pico 2 W loads and runs the driver; not run against a sign) |
+| Board | Raspberry Pi Pico W, MicroPython 1.29.0. **Not yet tested on a Pico 2 W** (the driver imports and runs there, but it hasn't driven a sign); that's planned |
 | RS485 | Waveshare Pico-2CH-RS485, channel 0 (UART0, GP0/GP1), sign data red on A, black on B. No direction pin needed |
 | Sign | 20x14, rotary switch SW2 on 5, 24 V / 5 A supply |
-| Verified | `fill`, `clear`, `set_pixel` (state retained), `set_pixels`, `test(True/False)`, `flip=True` (an L at (0,0) appeared in the opposite corner), 0.3 s between frames and the `min_gap_ms` guard (a 0.2 s loop was slowed to 0.3 s and every row showed) |
-| Not yet tested | the 84x7 sign, `de_pin`, several signs on one bus |
+| Verified | `fill`, `clear`, `set_pixel` (state retained), `set_pixels`, `test(True/False)`, `flip=True` (an L at (0,0) appeared in the opposite corner), `examples/demo.py` looping on the sign, 0.3 s between frames and the `min_gap_ms` guard (a 0.2 s loop was slowed to 0.3 s and every row showed) |
+| Not yet tested | a Pico 2 W driving a sign, the 84x7 sign, `de_pin`, several signs on one bus |
 
 ## Sign quirks
 
@@ -70,7 +77,7 @@ These came out of testing on the 20x14 sign and may differ on other signs, so ch
 - [Waveshare Pico-2CH-RS485](https://www.waveshare.com/pico-2ch-rs485.htm) (SP3485): channel 0 = UART0 on GP0/GP1, channel 1 = UART1 on GP4/GP5
 - Hanover Displays flip-dot sign, 4800 baud serial, powered from a **24 V / 5 A** supply. A 24 V / 1 A supply made it drop frames
   at random, so don't skimp on current (see [Sign quirks](#sign-quirks))
-- MicroPython **1.29.0** (tested on the Pico W). Older releases are untested; roughly 1.20+ is expected to work
+- MicroPython **1.29.0** (tested on the Pico W; the Pico 2 W is untested with a sign but planned). Older releases are untested; roughly 1.20+ is expected to work
   (`mip` install and `UART.flush()`, which is only used with `de_pin`), but that hasn't been verified.
 
 ## Install
@@ -79,7 +86,7 @@ These came out of testing on the 20x14 sign and may differ on other signs, so ch
 mpremote mip install github:simonprickett/mpflipdot
 ```
 
-or, on the board: `import mip; mip.install("github:simonprickett/mpflipdot")`. Or just copy `mpflipdot.py` to the board.
+(verified on a Pico W: it installs `/lib/mpflipdot.py`), or, on the board: `import mip; mip.install("github:simonprickett/mpflipdot")`. Or just copy `mpflipdot.py` to the board.
 
 Run the tests (CPython, no hardware): `python3 -m unittest discover -s tests`.
 

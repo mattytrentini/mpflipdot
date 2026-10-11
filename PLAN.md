@@ -158,7 +158,15 @@ Found by changing one thing at a time, first with a USB-RS485 adapter on a Mac (
   retention, `set_pixels` (a 64-dot border in one frame), `test(True/False)`, 0.3 s frame cadence.
 
 Open items: test the 84x7 sign (address, row layout, whether it needs the blank-frame workaround and what `row_offset` it uses);
-test the Pico 2 W against a sign; test `mip install` once the repo is pushed; consider a minimum-gap helper or rate limit in the driver.
+test the Pico 2 W against a sign; consider a minimum-gap helper or rate limit in the driver.
 - 84x7 sign deferred (swapping it in is awkward); do it later on the same 24 V / 5 A supply as the 20x14 sign.
 - `min_gap_ms=300` guard added (blocks until the gap has passed). Verified on the 20x14 sign: a loop sending every 0.2 s, which skipped rows before, showed every row.
 - `flip=True` verified on the 20x14 sign (with `row_offset=1`): an L-shape drawn at (0,0) appeared rotated in the bottom-right corner.
+- `mpremote mip install github:simonprickett/mpflipdot` verified on the Pico W: installed `/lib/mpflipdot.py`, byte-identical to the repo file, and drove the sign.
+- Pico 2 W has not driven a sign yet; planned. The 84x7 sign is also still to do.
+- `examples/demo.py` (seven looping patterns, paced by `min_gap_ms`) watched running on the 20x14 sign; looked right with no skipped frames.
+- **Open item, 84x7 timing:** `min_gap_ms` is measured from when a send starts. On the 20x14 sign a 88-byte frame takes ~183 ms at 4800 baud,
+  so 300 ms leaves ~117 ms of quiet (0.2 s, ~17 ms of quiet, dropped frames; nothing between was tried). An 84x7 frame is ~176 bytes, ~0.37 s on the wire,
+  so a 300 ms gap would send frames back to back with no processing time and probably drop them. If that happens, time the gap from the end of
+  transmission instead (quiet gap of roughly 100 ms plus the frame's send time, which the driver can compute from the frame size).
+  Measured rate on the 20x14: ~3.4 fps (14 frames in 4.1 s). Not measured between 0.2 s and 0.3 s.
