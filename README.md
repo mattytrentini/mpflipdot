@@ -2,6 +2,8 @@
 
 ![A Hanover Displays flip-dot sign driven by mpflipdot](flipdot_example.jpg)
 
+[Watch a video demo on YouTube](https://www.youtube.com/watch?v=nHq_gT024Bs).
+
 A minimal MicroPython driver for [Hanover Displays](https://www.hanoverdisplays.com/) flip-dot signs,
 aimed at a Raspberry Pi Pico with an RS485 adapter. No dependencies beyond MicroPython itself.
 
