@@ -66,9 +66,35 @@ Lines are clipped to the sign, so one that runs past the edge draws the visible 
 along its minor axis, so a diagonal comes out about 0.7 of the width you ask for, and an even width puts the extra dot
 below or to the right of the centre line.
 
+## Text
+
+`mpflipdot_text.py` (also installed with the driver) has a 5x7 font and works the same way as the drawing helpers: its
+functions return `(x, y, on)` dots for `set_pixels`, clipped to the sign.
+
+```python
+from mpflipdot_text import text, scroll, text_width
+
+sign.set_pixels(text(sign, "HI!", 1, 3))              # top-left corner of the text at x=1, y=3
+sign.set_pixels(text(sign, "OK", 2, 0, scale=2))      # whole-number scale: 2 gives 10x14 characters
+sign.set_pixels(text(sign, "HI!", 1, 3, on=False))    # erase it again
+scroll(sign, "HELLO WORLD", y=3)                      # once right to left, one frame per step, ends blank
+scroll(sign, "BIG", y=0, scale=2, step=3)             # step = dots moved per frame (default 2)
+width = text_width("HELLO", scale=1)                  # in dots, e.g. to centre text
+```
+
+- Characters are 5 dots wide with a 1-dot gap, so a 20-dot-wide sign fits three at scale 1. Scrolling is how you show more.
+- The font covers ASCII space to `Z`: `A-Z`, `0-9`, space, and `! " # $ % & ' ( ) * + , - . / : ; < = > ? @`. Lowercase is
+  drawn as uppercase, and any other character is blank. The table is about 300 bytes.
+- To draw text on a blank sign in one frame, make the sign with `auto_show=False`, then
+  `sign.clear(); sign.set_pixels(text(...)); sign.show()`. With `auto_show=True` each of those calls sends its own frame.
+  `scroll` handles that itself.
+- `scroll_frames(sign, string, y, scale, step)` yields the dots for each frame, if you want to do something between frames.
+  The frame rate is set by the driver's `min_gap_ms`, so about 3 frames a second: a larger `step` scrolls faster.
+
 ## Examples
 
 - `examples/basic.py`: clear, single dots, a batch update and test mode.
+- `examples/text.py`: positioned text, a counter, and scrolling text at scale 1 and 2.
 - `examples/bounce.py`: a ball bouncing round the sign forever; Ctrl-C clears the sign and stops it.
 - `examples/shapes.py`: loops through rect and circle demos (growing and nested rectangles, circles, a target, a bouncing ball, a hole punched in a solid block).
 - `examples/lines.py`: loops through line demos (widths, a cross, spinning lines, a fan, lines clipped at the edges).

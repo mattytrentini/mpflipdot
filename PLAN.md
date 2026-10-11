@@ -171,3 +171,4 @@ test the Pico 2 W against a sign; consider a minimum-gap helper or rate limit in
   transmission instead (quiet gap of roughly 100 ms plus the frame's send time, which the driver can compute from the frame size).
   Measured rate on the 20x14: ~3.4 fps (14 frames in 4.1 s). Not measured between 0.2 s and 0.3 s.
 - `mpflipdot_draw.py` added: `line(sign, x0, y0, x1, y1, width=1, on=True)` (Bresenham, thickened along the minor axis, clipped to the sign). Unit-tested; `examples/lines.py` watched on the 20x14 sign and looked right. Install via `package.json` needs a re-test after the next push.
+- `mpflipdot_text.py` added: 5x7 font (ASCII space to Z, ~300 bytes, bit 0 = top), `text`, `text_width`, `scroll_frames`, `scroll`. Unit-tested (46 tests in all); font data checked by rendering every glyph as ASCII art. `examples/text.py` still to be watched on the sign.
