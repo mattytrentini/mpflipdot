@@ -35,9 +35,43 @@ adapters without automatic direction control, `min_gap_ms=300` (see below). Ever
 per-dot command. `set_pixels` sends just one frame for the whole batch. Addresses are 0-15 (one hex digit on the
 wire). Several signs on one bus: create one `FlipDot` per address sharing the same UART.
 
+## Drawing helpers
+
+`mpflipdot_draw.py` is installed alongside the driver and has plain functions that return `(x, y, on)` dots for
+`set_pixels`, so a whole shape goes out as one frame:
+
+```python
+from mpflipdot_draw import line
+
+sign.set_pixels(line(sign, 0, 0, 19, 13))                # width 1
+sign.set_pixels(line(sign, 0, 0, 19, 13, width=3))
+sign.set_pixels(line(sign, 0, 0, 19, 13, on=False))      # erase the same line
+```
+
+```python
+from mpflipdot_draw import rect, circle
+
+sign.set_pixels(rect(sign, 2, 3, 10, 6))                       # top-left corner x, y, then width, height (outline)
+sign.set_pixels(rect(sign, 2, 3, 10, 6, solid=True))
+sign.set_pixels(circle(sign, 10, 7, 5))                        # centre x, y, then radius (outline)
+sign.set_pixels(circle(sign, 10, 7, 5, solid=True, on=False))  # a hole: switch the dots off
+```
+
+Rectangles and circles are outlines one dot thick unless you pass `solid=True`. A circle is `2 * radius + 1` dots across
+(`radius=0` is a single dot), and its outline is exactly the edge of the solid one. Lines, rectangles and circles are
+all clipped to the sign, and dots later in a list override earlier ones, so you can combine shapes in one frame:
+`set_pixels(list(rect(...)) + list(circle(..., on=False)))`.
+
+Lines are clipped to the sign, so one that runs past the edge draws the visible part. Width is added across the line
+along its minor axis, so a diagonal comes out about 0.7 of the width you ask for, and an even width puts the extra dot
+below or to the right of the centre line.
+
 ## Examples
 
 - `examples/basic.py`: clear, single dots, a batch update and test mode.
+- `examples/bounce.py`: a ball bouncing round the sign forever; Ctrl-C clears the sign and stops it.
+- `examples/shapes.py`: loops through rect and circle demos (growing and nested rectangles, circles, a target, a bouncing ball, a hole punched in a solid block).
+- `examples/lines.py`: loops through line demos (widths, a cross, spinning lines, a fan, lines clipped at the edges).
 - `examples/demo.py`: loops through patterns (sweeps, boxes, checkerboard, diagonal wipe, sparkle, flash) as fast as
   the sign allows. Run it with `mpremote run examples/demo.py`; edit `W`, `H` and `address` first for your sign.
   Stop it with Ctrl-C, or `mpremote soft-reset` if it's detached.
@@ -49,7 +83,7 @@ wire). Several signs on one bus: create one `FlipDot` per address sharing the sa
 | Board | Raspberry Pi Pico W, MicroPython 1.29.0. **Not yet tested on a Pico 2 W** (the driver imports and runs there, but it hasn't driven a sign); that's planned |
 | RS485 | Waveshare Pico-2CH-RS485, channel 0 (UART0, GP0/GP1), sign data red on A, black on B. No direction pin needed |
 | Sign | 20x14, rotary switch SW2 on 5, 24 V / 5 A supply |
-| Verified | `fill`, `clear`, `set_pixel` (state retained), `set_pixels`, `test(True/False)`, `flip=True` (an L at (0,0) appeared in the opposite corner), `examples/demo.py` looping on the sign, 0.3 s between frames and the `min_gap_ms` guard (a 0.2 s loop was slowed to 0.3 s and every row showed) |
+| Verified | `fill`, `clear`, `set_pixel` (state retained), `set_pixels`, `test(True/False)`, `flip=True` (an L at (0,0) appeared in the opposite corner), `examples/demo.py` and `examples/lines.py` on the sign, `mpflipdot_draw.line`, 0.3 s between frames and the `min_gap_ms` guard (a 0.2 s loop was slowed to 0.3 s and every row showed) |
 | Not yet tested | a Pico 2 W driving a sign, the 84x7 sign, `de_pin`, several signs on one bus |
 
 ## Sign quirks

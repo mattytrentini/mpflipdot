@@ -1,6 +1,7 @@
 {
   "urls": [
-    ["mpflipdot.py", "github:simonprickett/mpflipdot/mpflipdot.py"]
+    ["mpflipdot.py", "github:simonprickett/mpflipdot/mpflipdot.py"],
+    ["mpflipdot_draw.py", "github:simonprickett/mpflipdot/mpflipdot_draw.py"]
   ],
   "version": "0.1.0"
 }

@@ -170,3 +170,4 @@ test the Pico 2 W against a sign; consider a minimum-gap helper or rate limit in
   so a 300 ms gap would send frames back to back with no processing time and probably drop them. If that happens, time the gap from the end of
   transmission instead (quiet gap of roughly 100 ms plus the frame's send time, which the driver can compute from the frame size).
   Measured rate on the 20x14: ~3.4 fps (14 frames in 4.1 s). Not measured between 0.2 s and 0.3 s.
+- `mpflipdot_draw.py` added: `line(sign, x0, y0, x1, y1, width=1, on=True)` (Bresenham, thickened along the minor axis, clipped to the sign). Unit-tested; `examples/lines.py` watched on the 20x14 sign and looked right. Install via `package.json` needs a re-test after the next push.

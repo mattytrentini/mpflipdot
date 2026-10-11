@@ -79,3 +79,6 @@ while ROUNDS is None or rounds < ROUNDS:
     for pattern in (rows_down, columns_across, boxes, checkerboard, diagonal, sparkle, flash):
         pattern()
     rounds += 1
+
+sign.clear()
+sign.show()  # leave the sign blank when ROUNDS runs out
