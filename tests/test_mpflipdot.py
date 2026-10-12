@@ -110,6 +110,38 @@ class StateTests(unittest.TestCase):
             mpflipdot.ticks_ms, mpflipdot.sleep_ms = real
         self.assertEqual(sleeps, [200])
 
+    def test_unchanged_frames_are_not_resent(self):
+        u, s = make(width=4, height=7)
+        s.set_pixel(1, 1)
+        self.assertEqual(len(u.sent), 1)
+        s.set_pixel(1, 1)  # no change
+        s.show()
+        self.assertEqual(len(u.sent), 1)
+        s.set_pixel(1, 1, False)
+        s.set_pixel(1, 1, False)
+        self.assertEqual(len(u.sent), 2)
+        s.clear()  # blank again after a blank send: skipped
+        self.assertEqual(len(u.sent), 2)
+
+    def test_force_and_opt_out(self):
+        u, s = make(width=4, height=7)
+        s.set_pixel(0, 0)
+        s.show(force=True)
+        self.assertEqual(len(u.sent), 2)
+        self.assertEqual(u.sent[0], u.sent[1])
+        u2, s2 = make(width=4, height=7, skip_unchanged=False)
+        s2.show()
+        s2.show()
+        self.assertEqual(len(u2.sent), 2)
+
+    def test_test_mode_resets_the_skip(self):
+        u, s = make(width=4, height=7)
+        s.set_pixel(0, 0)
+        s.test(True)
+        s.test(False)
+        s.show()  # the sign was left showing something else, so this must go out
+        self.assertEqual(len(u.sent), 4)
+
     def test_flip(self):
         _, s = make(width=4, height=7, flip=True, auto_show=False)
         s.set_pixel(0, 0)

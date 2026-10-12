@@ -5,7 +5,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import mpflipdot_text  # noqa: E402
 from mpflipdot import FlipDot  # noqa: E402
-from mpflipdot_text import scroll, scroll_frames, text, text_width  # noqa: E402
+from mpflipdot_text import scroll, scroll_frames, text, text_centered, text_width  # noqa: E402
 
 
 class Sign:
@@ -28,17 +28,18 @@ def art(string, **kw):
 
 class FontTests(unittest.TestCase):
     def test_table_shape(self):
-        self.assertEqual(len(mpflipdot_text._FONT), mpflipdot_text._COUNT * 5)
+        self.assertEqual(len(mpflipdot_text._FONT), (mpflipdot_text._COUNT + 1) * 5)  # the run plus |
         self.assertTrue(all(b < 0x80 for b in mpflipdot_text._FONT))  # 7 rows only
 
     def test_every_wanted_character_is_distinct_and_drawn(self):
-        wanted = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!/."
+        wanted = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!/.-:'()[]\\<>|"
         shapes = set()
         for ch in wanted:
             shape = frozenset(dots(ch))
             self.assertTrue(shape, ch)
             shapes.add(shape)
-        self.assertEqual(len(shapes), len(wanted))  # no two characters look the same
+        self.assertEqual(len(shapes), len(wanted) - 1)  # all different except 0 and O, which match
+        self.assertEqual(dots("0"), dots("O"))
         self.assertEqual(dots(" "), set())
 
     def test_some_glyphs_exactly(self):
@@ -48,9 +49,51 @@ class FontTests(unittest.TestCase):
         self.assertEqual(art("H"), ["#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"])
         self.assertEqual(art("/"), [".....", "....#", "...#.", "..#..", ".#...", "#....", "....."])
         self.assertEqual(art("1")[0], "..#..")
+        self.assertEqual(art("0"), [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."])  # no slash
+        self.assertEqual(art("'"), ["..#..", "..#..", "..#..", ".....", ".....", ".....", "....."])
+        self.assertEqual(art("[")[:3], [".###.", ".#...", ".#..."])
+        self.assertEqual(art("["), [r[::-1] for r in art("]")])  # ] is [ mirrored
+        self.assertEqual(art("("), [r[::-1] for r in art(")")])  # ( and ) mirror each other
+        self.assertEqual(art("\\"), [r[::-1] for r in art("/")])  # backslash is / mirrored
+        self.assertEqual(art("|"), ["..#.."] * 7)  # full height
+        self.assertEqual(art("<"), ["...#.", "..#..", ".#...", "#....", ".#...", "..#..", "...#."])
+        self.assertEqual(art(">"), [".#...", "..#..", "...#.", "....#", "...#.", "..#..", ".#..."])
+        self.assertEqual(art("-"), [".....", ".....", ".....", "#####", ".....", ".....", "....."])
+        self.assertEqual(art(":"), [".....", ".##..", ".##..", ".....", ".##..", ".##..", "....."])
 
 
 class TextTests(unittest.TestCase):
+    def test_centered(self):
+        sign = Sign(20, 14)
+        got = set((x, y) for x, y, on in text_centered(sign, "HI", 3))
+        self.assertEqual(got, set((x, y) for x, y, on in text(sign, "HI", 5, 3)))  # ink is 10 dots wide (the I leaves a blank column), so (20 - 10) // 2
+        scaled = set((x, y) for x, y, on in text_centered(sign, "H", 0, scale=2))
+        self.assertEqual(min(x for x, _ in scaled), 5)  # (20 - 10) // 2
+        self.assertEqual(max(x for x, _ in scaled), 14)
+
+    def test_centred_on_the_ink_not_the_cell(self):
+        sign = Sign(20, 14)
+
+        def span(string, scale=1):
+            xs = [x for x, _, _ in text_centered(sign, string, 0, scale)]
+            return min(xs), max(xs)
+
+        self.assertEqual(span("I"), (8, 10))     # 3 dots wide, not the 5-dot cell
+        self.assertEqual(span("."), (9, 10))     # 2 dots wide
+        self.assertEqual(span("!"), (9, 9))      # a single column
+        self.assertEqual(span("H"), (7, 11))     # full cell: same as cell centring
+        self.assertEqual(span("I", 2), (7, 12))  # scaled
+        self.assertEqual(span("ABC"), (1, 17))
+        self.assertEqual(span("a b"), span("A B"))  # lowercase is the same text
+        for s in ("I.", ".I", "1", ":", "ABC"):
+            lo, hi = span(s)
+            self.assertLessEqual(abs(lo - (19 - hi)), 1, s)  # left and right margins within one dot
+        self.assertEqual(list(text_centered(sign, "   ", 0)), [])  # nothing to draw, nothing returned
+        self.assertEqual(list(text_centered(sign, "", 0)), [])
+        wide = set((x, y) for x, y, on in text_centered(Sign(10, 14), "ABCD"))  # 23 wide: clipped both ends
+        self.assertTrue(wide and all(0 <= x < 10 for x, _ in wide))
+        self.assertTrue(all(on is False for _, _, on in text_centered(sign, "A", on=False)))
+
     def test_width(self):
         self.assertEqual([text_width(s) for s in ("", "A", "AB", "ABC")], [0, 5, 11, 17])
         self.assertEqual([text_width(s, 2) for s in ("", "A", "AB")], [0, 10, 22])

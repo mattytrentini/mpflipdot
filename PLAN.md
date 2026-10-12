@@ -172,4 +172,15 @@ test the Pico 2 W against a sign; consider a minimum-gap helper or rate limit in
   transmission instead (quiet gap of roughly 100 ms plus the frame's send time, which the driver can compute from the frame size).
   Measured rate on the 20x14: ~3.4 fps (14 frames in 4.1 s). Not measured between 0.2 s and 0.3 s.
 - `mpflipdot_draw.py` added: `line(sign, x0, y0, x1, y1, width=1, on=True)` (Bresenham, thickened along the minor axis, clipped to the sign). Unit-tested; `examples/lines.py` watched on the 20x14 sign and looked right. Install via `package.json` needs a re-test after the next push.
-- `mpflipdot_text.py` added: 5x7 font (ASCII space to Z, ~300 bytes, bit 0 = top), `text`, `text_width`, `scroll_frames`, `scroll`. Unit-tested (46 tests in all); font data checked by rendering every glyph as ASCII art. `examples/text.py` still to be watched on the sign.
+- Frame skip done: `show()` sends nothing when the frame matches the last one sent (`show(force=True)` overrides, `skip_unchanged=False` disables; `test()` resets it). Ran alongside the text demos on the 20x14 sign with no problems seen; the effect of skipping a repeat frame hasn't been looked at on its own.
+- `mpflipdot_text.py` added: 5x7 font (bit 0 = top; ASCII space to `]`, plus `|` stored just past that run as a special case, ~315 bytes), `text`, `text_width`, `text_centered`, `scroll_frames`, `scroll`. `text_centered` centres on the drawn dots, not the 5-dot cells. Zero is a plain oval (same as O); `'` is a vertical tick; `[ \ ] |` were added later (`( ) < > + # ! - :` were already there). Unit-tested (51 tests in all); font data checked by rendering every glyph as ASCII art. `examples/text.py`, `text_centered` and the added glyphs have been watched on the 20x14 sign and look right.
+
+## Ideas for later (suggested, not started)
+
+- **84x7 frame timing (do before trying that sign):** time `min_gap_ms` from the end of transmission, using the frame's send time, since an 84x7 frame (~0.37 s) is longer than the 300 ms gap.
+- **Bigger font / more text:** a taller or bolder font for the 84x7 sign, more symbols, right-aligned text, vertical centring. (`text_centered` already centres on the ink of the fixed-width font; a proportional font would need its own widths.)
+- **Bitmap / sprite blit:** draw a small image from bytes or strings at x, y, with transparency. Base for icons and simple games.
+- **Scroll pacing:** pick the scroll step from the sign width so it feels smooth at ~3 fps; vertical scroll.
+- **Multi-sign helper:** a `Display` wrapper treating several signs on one bus as one wider canvas.
+- **Wi-Fi demos (examples only):** NTP clock, weather ticker, message board over HTTP.
+- **Hardware tests waiting on kit:** the 84x7 sign, a Pico 2 W with a second Waveshare board, and a single colour Hanover LED sign.

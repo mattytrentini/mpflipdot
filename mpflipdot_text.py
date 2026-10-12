@@ -1,9 +1,10 @@
 """Optional text helpers for mpflipdot: a 5x7 font, text at any position, and scrolling."""
 
-# 5 bytes per character for ASCII 32 (space) to 90 ('Z'). Each byte is one column, left to right,
+# 5 bytes per character for ASCII 32 (space) to 93 (']'). Each byte is one column, left to right,
 # and bit 0 is the top row. Lowercase is drawn as uppercase; anything else is blank.
 _FIRST = 32
-_COUNT = 59
+_COUNT = 62  # the contiguous run, space to "]"
+_BAR = _COUNT  # "|" is stored after the run (it is ASCII 124, too far on to keep the table contiguous)
 _FONT = (
     b"\x00\x00\x00\x00\x00"  # space
     b"\x00\x00\x5f\x00\x00"  # !
@@ -12,7 +13,7 @@ _FONT = (
     b"\x24\x2a\x7f\x2a\x12"  # $
     b"\x23\x13\x08\x64\x62"  # %
     b"\x36\x49\x55\x22\x50"  # &
-    b"\x00\x05\x03\x00\x00"  # '
+    b"\x00\x00\x07\x00\x00"  # '
     b"\x00\x1c\x22\x41\x00"  # (
     b"\x00\x41\x22\x1c\x00"  # )
     b"\x14\x08\x3e\x08\x14"  # *
@@ -21,7 +22,7 @@ _FONT = (
     b"\x08\x08\x08\x08\x08"  # -
     b"\x00\x60\x60\x00\x00"  # .
     b"\x20\x10\x08\x04\x02"  # /
-    b"\x3e\x51\x49\x45\x3e"  # 0
+    b"\x3e\x41\x41\x41\x3e"  # 0 (no slash; same as O)
     b"\x00\x42\x7f\x40\x00"  # 1
     b"\x42\x61\x51\x49\x46"  # 2
     b"\x21\x41\x45\x4b\x31"  # 3
@@ -64,7 +65,19 @@ _FONT = (
     b"\x63\x14\x08\x14\x63"  # X
     b"\x07\x08\x70\x08\x07"  # Y
     b"\x61\x51\x49\x45\x43"  # Z
+    b"\x00\x7f\x41\x41\x00"  # [
+    b"\x02\x04\x08\x10\x20"  # backslash
+    b"\x00\x41\x41\x7f\x00"  # ]
+    b"\x00\x00\x7f\x00\x00"  # |
 )
+
+
+def _index(ch):
+    """Position of ch's glyph in _FONT, or -1 if the font doesn't have it."""
+    i = ord(ch) - _FIRST
+    if 0 <= i < _COUNT:
+        return i
+    return _BAR if ch == "|" else -1
 
 
 def text_width(string, scale=1):
@@ -85,8 +98,8 @@ def text(sign, string, x, y, scale=1, on=True):
         gx = x + n * 6 * scale
         if gx >= w:
             break  # this character and the rest are off the right edge
-        i = ord(ch) - _FIRST
-        if gx + 5 * scale <= 0 or not 0 <= i < _COUNT:
+        i = _index(ch)
+        if gx + 5 * scale <= 0 or i < 0:
             continue
         for col in range(5):
             bits = _FONT[i * 5 + col]
@@ -99,6 +112,34 @@ def text(sign, string, x, y, scale=1, on=True):
                                 py = y + row * scale + dy
                                 if 0 <= py < h:
                                     yield (px, py, on)
+
+
+def _ink(string):
+    """(first, last) unscaled columns that have a dot in them, or None if nothing would be drawn."""
+    first = last = None
+    for n, ch in enumerate(string.upper()):
+        i = _index(ch)
+        if i >= 0:
+            for col in range(5):
+                if _FONT[i * 5 + col]:
+                    if first is None:
+                        first = n * 6 + col
+                    last = n * 6 + col
+    return None if first is None else (first, last)
+
+
+def text_centered(sign, string, y=0, scale=1, on=True):
+    """Dots for string centred left to right on the sign by the dots drawn, with its top at y.
+
+    Blank columns at the start and end of the text (as in I, 1, . and !) don't count, so what you see is
+    centred. Any odd dot left over goes on the right. Too wide to fit: both ends are clipped.
+    """
+    ink = _ink(string)
+    if ink is None:
+        return text(sign, string, 0, y, scale, on)  # nothing to draw
+    first, last = ink
+    x = (sign.width - (last - first + 1) * scale) // 2 - first * scale
+    return text(sign, string, x, y, scale, on)
 
 
 def scroll_frames(sign, string, y=0, scale=1, step=2):

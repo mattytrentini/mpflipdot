@@ -53,13 +53,15 @@ def _packet(cmd, address, data=b""):
 
 
 class FlipDot:
-    def __init__(self, uart, address=1, width=84, height=7, flip=False, auto_show=True, de_pin=None, row_offset=0, min_gap_ms=300):
+    def __init__(self, uart, address=1, width=84, height=7, flip=False, auto_show=True, de_pin=None, row_offset=0, min_gap_ms=300, skip_unchanged=True):
         """uart: configured UART (see open_uart). address: 0-15.
         flip: sign is mounted upside-down. auto_show: send the frame after every change.
         de_pin: optional Pin to drive RS485 DE/RE for adapters without automatic direction.
         row_offset: bit position of the top row in each column (1 for the 20x14 test sign).
         min_gap_ms: minimum time between sends; later sends wait (0 turns this off). The
         20x14 test sign skipped frames sent 200 ms apart but kept up at 300 ms.
+        skip_unchanged: show() sends nothing if the frame is identical to the last one sent
+        (show(force=True) always sends, e.g. to repair a frame the sign dropped).
         """
         if not 0 <= address <= 15:
             raise ValueError("address 0-15")
@@ -75,7 +77,9 @@ class FlipDot:
         self.auto_show = auto_show
         self.de_pin = de_pin
         self.min_gap_ms = min_gap_ms
+        self.skip_unchanged = skip_unchanged
         self._last = None
+        self._sent = None  # the last frame sent, to spot repeats
         self._buf = bytearray(width * self._bpc)  # wire layout: column-major, bit0 = top row
 
     def _write(self, packet):
@@ -104,15 +108,18 @@ class FlipDot:
         if self.auto_show:
             self.show()
 
-    def show(self):
-        """Send the current frame to the sign."""
+    def show(self, force=False):
+        """Send the current frame to the sign (nothing if it's unchanged since the last send, unless force)."""
         buf = self._buf
         p = 0 if self.row_offset else self.height  # first bit that is not a visible row
         if p < 8 * self._bpc and not any(buf):
             # the sign ignores all-zero frames, so set a bit that lights no dot
             buf = bytearray(buf)
             buf[p >> 3] |= 1 << (p & 7)
+        if self.skip_unchanged and not force and self._sent == buf:
+            return
         self._write(_packet(_CMD_WRITE, self.address, buf))
+        self._sent = bytes(buf)
 
     def clear(self):
         """All dots off."""
@@ -153,3 +160,4 @@ class FlipDot:
     def test(self, on=True):
         """Start or stop the manufacturer's test mode (broadcast to all signs)."""
         self._write(_packet(_CMD_TEST_START if on else _CMD_TEST_STOP, 0))
+        self._sent = None  # test mode changes what the sign shows, so the next frame must be sent

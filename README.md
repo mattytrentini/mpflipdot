@@ -17,9 +17,9 @@ A minimal [MicroPython](https://micropython.org/) driver for [Hanover Displays](
 - Set a single dot on/off while retaining all others
 - Set many dots (or the whole display) in one update
 - Optional drawing helpers (`mpflipdot_draw.py`): lines of any width, rectangles and circles, each an outline or solid
-- Optional text (`mpflipdot_text.py`): a built-in 5x7 font (A-Z, 0-9 and punctuation), text at any x, y position, scaling, and scrolling
+- Optional text (`mpflipdot_text.py`): a built-in 5x7 font (A-Z, 0-9 and most punctuation, including brackets and `|`), text at any x, y position (or centred), scaling, and scrolling
 - Everything is clipped to the sign, and `on=False` erases a shape or text instead of drawing it
-- A minimum gap between frames, so the sign doesn't drop updates
+- A minimum gap between frames, so the sign doesn't drop updates, and repeat frames are not sent at all
 
 ## Usage
 
@@ -39,7 +39,7 @@ sign.test(False)
 Other options: `row_offset=1` if the sign's top row is bit 1 instead of bit 0, `flip=True` (sign mounted
 upside-down; rotates the picture 180° so (0, 0) stays your top-left), `auto_show=False` (batch changes, then call `sign.show()`), `de_pin=Pin(n, Pin.OUT)` for RS485
 adapters without automatic direction control, `min_gap_ms=300` (see below). Every change resends the whole frame, because the protocol has no
-per-dot command. `set_pixels` sends just one frame for the whole batch. Addresses are 0-15 (one hex digit on the
+per-dot command; a frame identical to the last one sent is skipped (`show(force=True)` sends it anyway, `skip_unchanged=False` turns skipping off). `set_pixels` sends just one frame for the whole batch. Addresses are 0-15 (one hex digit on the
 wire). Several signs on one bus: create one `FlipDot` per address sharing the same UART.
 
 ## Drawing helpers
@@ -79,19 +79,22 @@ below or to the right of the centre line.
 functions return `(x, y, on)` dots for `set_pixels`, clipped to the sign.
 
 ```python
-from mpflipdot_text import text, scroll, text_width
+from mpflipdot_text import text, text_centered, scroll, text_width
 
 sign.set_pixels(text(sign, "HI!", 1, 3))              # top-left corner of the text at x=1, y=3
 sign.set_pixels(text(sign, "OK", 2, 0, scale=2))      # whole-number scale: 2 gives 10x14 characters
 sign.set_pixels(text(sign, "HI!", 1, 3, on=False))    # erase it again
+sign.set_pixels(text_centered(sign, "HI!", 3))        # centred left to right by the dots drawn, top at y=3
 scroll(sign, "HELLO WORLD", y=3)                      # once right to left, one frame per step, ends blank
 scroll(sign, "BIG", y=0, scale=2, step=3)             # step = dots moved per frame (default 2)
-width = text_width("HELLO", scale=1)                  # in dots, e.g. to centre text
+width = text_width("HELLO", scale=1)                  # in dots, e.g. for your own layout
 ```
 
 - Characters are 5 dots wide with a 1-dot gap, so a 20-dot-wide sign fits three at scale 1. Scrolling is how you show more.
-- The font covers ASCII space to `Z`: `A-Z`, `0-9`, space, and `! " # $ % & ' ( ) * + , - . / : ; < = > ? @`. Lowercase is
-  drawn as uppercase, and any other character is blank. The table is about 300 bytes.
+- `text_centered` centres on the dots drawn, ignoring the blank columns some characters (`I`, `1`, `.`, `!`) leave at their edges; an odd dot left over goes on the right.
+- The zero is a plain oval (no slash), so it matches the letter O.
+- The font covers ASCII space to `]`: `A-Z`, `0-9`, space, and `! " # $ % & ' ( ) * + , - . / : ; < = > ? @ [ \ ]`, plus `|`. Lowercase is
+  drawn as uppercase, and any other character is blank. The table is about 315 bytes.
 - To draw text on a blank sign in one frame, make the sign with `auto_show=False`, then
   `sign.clear(); sign.set_pixels(text(...)); sign.show()`. With `auto_show=True` each of those calls sends its own frame.
   `scroll` handles that itself.
@@ -101,7 +104,7 @@ width = text_width("HELLO", scale=1)                  # in dots, e.g. to centre 
 ## Examples
 
 - `examples/basic.py`: clear, single dots, a batch update and test mode.
-- `examples/text.py`: positioned text, a counter, and scrolling text at scale 1 and 2.
+- `examples/text.py`: centred and positioned text, a counter, and scrolling text at scale 1 and 2.
 - `examples/bounce.py`: a ball bouncing round the sign forever; Ctrl-C clears the sign and stops it.
 - `examples/shapes.py`: loops through rect and circle demos (growing and nested rectangles, circles, a target, a bouncing ball, a hole punched in a solid block).
 - `examples/lines.py`: loops through line demos (widths, a cross, spinning lines, a fan, lines clipped at the edges).
@@ -116,7 +119,7 @@ width = text_width("HELLO", scale=1)                  # in dots, e.g. to centre 
 | Board | [Raspberry Pi Pico W](https://www.raspberrypi.com/products/raspberry-pi-pico/), [MicroPython 1.29.0](https://micropython.org/download/). **Not yet tested on a Pico 2 W** (the driver imports and runs there, but it hasn't driven a sign); that's planned |
 | RS485 | [Waveshare Pico-2CH-RS485](https://www.waveshare.com/pico-2ch-rs485.htm), channel 0 (UART0, GP0/GP1), sign data red on A, black on B. No direction pin needed |
 | Sign | Hanover Displays Flip Dot 20x14, rotary switch SW2 on 5, 24 V / 5 A supply |
-| Verified | `fill`, `clear`, `set_pixel` (state retained), `set_pixels`, `test(True/False)`, `flip=True` (an L at (0,0) appeared in the opposite corner), `examples/demo.py` and `examples/lines.py` on the sign, `mpflipdot_draw.line`, 0.3 s between frames and the `min_gap_ms` guard (a 0.2 s loop was slowed to 0.3 s and every row showed) |
+| Verified | `fill`, `clear`, `set_pixel` (state retained), `set_pixels`, `test(True/False)`, `flip=True` (an L at (0,0) appeared in the opposite corner), `examples/demo.py` and `examples/lines.py` on the sign, `mpflipdot_draw.line`, `rect`/`circle` (`examples/shapes.py`), `examples/bounce.py`, `examples/text.py` (scrolling, positioned and centred text, every punctuation glyph added so far, ink-centring), skipping of repeated frames, 0.3 s between frames and the `min_gap_ms` guard (a 0.2 s loop was slowed to 0.3 s and every row showed) |
 | Not yet tested | a Pico 2 W driving a sign, the 84x7 sign, `de_pin`, several signs on one bus |
 
 ## Sign quirks

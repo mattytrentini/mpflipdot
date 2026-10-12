@@ -1,7 +1,7 @@
 """Loops through text demos: positioned text, a counter, and scrolling (needs mpflipdot_text.py too)."""
 import time
 from mpflipdot import FlipDot, open_uart
-from mpflipdot_text import scroll, text
+from mpflipdot_text import scroll, text, text_centered
 
 uart = open_uart(0, tx=0, rx=1)
 
@@ -22,7 +22,7 @@ def show(points):
 
 def positioned():
     """Three characters fit across this sign: place them, then move them about."""
-    show(text(sign, "HI!", 1, MID))
+    show(text_centered(sign, "HI!", MID))
     time.sleep(2)
     for y in list(range(H - 7 + 1)) + list(range(H - 7 - 1, 0, -1)):
         show(text(sign, "ABC", 1, y))
