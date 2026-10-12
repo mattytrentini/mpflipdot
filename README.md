@@ -4,8 +4,7 @@
 
 [Watch a video demo on YouTube](https://www.youtube.com/watch?v=nHq_gT024Bs).
 
-A minimal MicroPython driver for [Hanover Displays](https://www.hanoverdisplays.com/) flip-dot signs,
-aimed at a Raspberry Pi Pico with an RS485 adapter. No dependencies beyond MicroPython itself.
+A minimal [MicroPython](https://micropython.org/) driver for [Hanover Displays](https://www.hanoverdisplays.com/) flip-dot signs, aimed at a [Raspberry Pi Pico](https://www.raspberrypi.com/products/raspberry-pi-pico/) (or Pico 2) with an RS485 adapter. No dependencies beyond MicroPython itself.
 
 > **Status:** early but working. Verified on a 20x14 sign from a Pico W with the Waveshare Pico-2CH-RS485 (see
 > [Tested hardware](#tested-hardware)). The Pico 2 W and the 84x7 sign have not been tested yet. See [PLAN.md](PLAN.md) for protocol notes and design.
@@ -17,6 +16,10 @@ aimed at a Raspberry Pi Pico with an RS485 adapter. No dependencies beyond Micro
 - Start / stop the manufacturer's test mode (broadcast, address 0)
 - Set a single dot on/off while retaining all others
 - Set many dots (or the whole display) in one update
+- Optional drawing helpers (`mpflipdot_draw.py`): lines of any width, rectangles and circles, each an outline or solid
+- Optional text (`mpflipdot_text.py`): a built-in 5x7 font (A-Z, 0-9 and punctuation), text at any x, y position, scaling, and scrolling
+- Everything is clipped to the sign, and `on=False` erases a shape or text instead of drawing it
+- A minimum gap between frames, so the sign doesn't drop updates
 
 ## Usage
 
@@ -110,9 +113,9 @@ width = text_width("HELLO", scale=1)                  # in dots, e.g. to centre 
 
 | | |
 |---|---|
-| Board | Raspberry Pi Pico W, MicroPython 1.29.0. **Not yet tested on a Pico 2 W** (the driver imports and runs there, but it hasn't driven a sign); that's planned |
-| RS485 | Waveshare Pico-2CH-RS485, channel 0 (UART0, GP0/GP1), sign data red on A, black on B. No direction pin needed |
-| Sign | 20x14, rotary switch SW2 on 5, 24 V / 5 A supply |
+| Board | [Raspberry Pi Pico W](https://www.raspberrypi.com/products/raspberry-pi-pico/), [MicroPython 1.29.0](https://micropython.org/download/). **Not yet tested on a Pico 2 W** (the driver imports and runs there, but it hasn't driven a sign); that's planned |
+| RS485 | [Waveshare Pico-2CH-RS485](https://www.waveshare.com/pico-2ch-rs485.htm), channel 0 (UART0, GP0/GP1), sign data red on A, black on B. No direction pin needed |
+| Sign | Hanover Displays Flip Dot 20x14, rotary switch SW2 on 5, 24 V / 5 A supply |
 | Verified | `fill`, `clear`, `set_pixel` (state retained), `set_pixels`, `test(True/False)`, `flip=True` (an L at (0,0) appeared in the opposite corner), `examples/demo.py` and `examples/lines.py` on the sign, `mpflipdot_draw.line`, 0.3 s between frames and the `min_gap_ms` guard (a 0.2 s loop was slowed to 0.3 s and every row showed) |
 | Not yet tested | a Pico 2 W driving a sign, the 84x7 sign, `de_pin`, several signs on one bus |
 
@@ -126,8 +129,10 @@ These came out of testing on the 20x14 sign and may differ on other signs, so ch
 - **All-zero frames are ignored.** A frame with no dots set does nothing, so a plain "clear" would never take effect.
   When a frame would be all zero, `show()` sets one bit that lights no dot (bit 0 with `row_offset`, or the first
   spare bit above the rows), and the display clears as expected. The 84x7 sign is untested.
-- **Power it properly.** A 24 V / 1 A supply made the sign drop frames at random, which looked like a signalling
-  problem. A 24 V / 5 A supply fixed it. If frames go missing, check the supply before the wiring.
+- **Power it properly.** An underpowered sign behaves unreliably: it drops frames at random, or looks completely
+  unresponsive (no clicking, nothing changes) even though the wiring and code are fine, which looks just like a
+  signalling problem. In testing a 24 V / 5 A supply was reliable and a 24 V / 1 A supply was not. If frames go
+  missing or the sign seems dead, check the supply before the wiring.
 - **Update rate.** Wait at least about 0.3 s between frames. At 0.2 s the sign skipped frames. One frame takes about
   0.18 s just to send at 4800 baud (84x7 frames are the same size or smaller, so should do no worse). The driver
   enforces this: `min_gap_ms=300` makes a send wait until that long after the previous one, so a fast loop is slowed
@@ -140,7 +145,7 @@ These came out of testing on the 20x14 sign and may differ on other signs, so ch
 - Raspberry Pi Pico W or Pico 2 W running MicroPython
 - [Waveshare Pico-2CH-RS485](https://www.waveshare.com/pico-2ch-rs485.htm) (SP3485): channel 0 = UART0 on GP0/GP1, channel 1 = UART1 on GP4/GP5
 - Hanover Displays flip-dot sign, 4800 baud serial, powered from a **24 V / 5 A** supply. A 24 V / 1 A supply made it drop frames
-  at random, so don't skimp on current (see [Sign quirks](#sign-quirks))
+  at random or seem unresponsive, so don't skimp on current (see [Sign quirks](#sign-quirks))
 - MicroPython **1.29.0** (tested on the Pico W; the Pico 2 W is untested with a sign but planned). Older releases are untested; roughly 1.20+ is expected to work
   (`mip` install and `UART.flush()`, which is only used with `de_pin`), but that hasn't been verified.
 

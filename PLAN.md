@@ -164,6 +164,7 @@ test the Pico 2 W against a sign; consider a minimum-gap helper or rate limit in
 - `flip=True` verified on the 20x14 sign (with `row_offset=1`): an L-shape drawn at (0,0) appeared rotated in the bottom-right corner.
 - `mpremote mip install github:simonprickett/mpflipdot` verified on the Pico W: installed `/lib/mpflipdot.py`, byte-identical to the repo file, and drove the sign.
 - Pico 2 W has not driven a sign yet; planned. The 84x7 sign is also still to do.
+- Planned, sometime: try the driver with a single colour Hanover LED sign, to see whether it works with those as well as flip-dot signs. Untested; whether they use the same protocol, and what address, size and row layout they need, is unknown.
 - `examples/demo.py` (seven looping patterns, paced by `min_gap_ms`) watched running on the 20x14 sign; looked right with no skipped frames.
 - **Open item, 84x7 timing:** `min_gap_ms` is measured from when a send starts. On the 20x14 sign a 88-byte frame takes ~183 ms at 4800 baud,
   so 300 ms leaves ~117 ms of quiet (0.2 s, ~17 ms of quiet, dropped frames; nothing between was tried). An 84x7 frame is ~176 bytes, ~0.37 s on the wire,
