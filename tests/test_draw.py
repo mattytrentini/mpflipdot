@@ -137,6 +137,45 @@ class CircleTests(unittest.TestCase):
                 self.assertEqual(max(x for x, _ in d) - min(x for x, _ in d) + 1, 2 * r + 1)
                 self.assertEqual(max(y for _, y in d) - min(y for _, y in d) + 1, 2 * r + 1)
 
+    def test_aspect_one_changes_nothing(self):
+        for r in range(0, 8):
+            for solid in (False, True):
+                self.assertEqual(shape(circle, 9, 7, r, solid=solid, aspect=1), shape(circle, 9, 7, r, solid=solid))
+
+    def test_aspect_stretches_sideways_only(self):
+        for aspect in (1.25, 1.5, 2, 3):
+            for r in range(0, 7):
+                for solid in (False, True):
+                    d = shape(circle, 20, 20, r, solid=solid, aspect=aspect, sign=Sign(40, 40))
+                    ys = [y for _, y in d]
+                    self.assertEqual(max(ys) - min(ys) + 1, 2 * r + 1)  # still 2r+1 rows tall
+                    xs = [x for x, _ in d]
+                    self.assertGreaterEqual(max(xs) - min(xs) + 1, 2 * r + 1)  # never narrower than round
+                    self.assertEqual(d, {(40 - x, y) for x, y in d})  # left-right symmetric about x=20
+                    self.assertEqual(d, {(x, 40 - y) for x, y in d})  # up-down symmetric about y=20
+        wide = shape(circle, 20, 20, 3, solid=True, aspect=2, sign=Sign(40, 40))
+        self.assertEqual(max(x for x, _ in wide) - min(x for x, _ in wide) + 1, 13)  # 2 * 6 + 1 on the middle row
+
+    def test_aspect_outline_is_the_edge_of_the_solid(self):
+        big = Sign(60, 40)
+        for aspect in (1.25, 1.5, 2.0):
+            for r in range(0, 8):
+                solid = shape(circle, 30, 20, r, solid=True, aspect=aspect, sign=big)
+                edge = {(x, y) for x, y in solid if not all(n in solid for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))}
+                self.assertEqual(shape(circle, 30, 20, r, aspect=aspect, sign=big), edge, (aspect, r))
+
+    def test_aspect_comes_from_the_sign_when_not_given(self):
+        class Wide(Sign):
+            aspect = 2
+
+        self.assertEqual(shape(circle, 20, 20, 3, sign=Wide(40, 40)), shape(circle, 20, 20, 3, aspect=2, sign=Sign(40, 40)))
+        self.assertEqual(shape(circle, 20, 20, 3, aspect=1, sign=Wide(40, 40)), shape(circle, 20, 20, 3, sign=Sign(40, 40)))
+
+    def test_bad_aspect(self):
+        for a in (0, -1):
+            with self.assertRaises(ValueError):
+                list(circle(Sign(), 5, 5, 2, aspect=a))
+
     def test_clipped(self):
         d = shape(circle, 0, 0, 3, solid=True)
         self.assertTrue(all(0 <= x < 20 and 0 <= y < 14 for x, y in d))

@@ -135,7 +135,6 @@ Design notes:
   pins configurable via `open_uart(uart_id, tx, rx)`, addresses/sizes configurable, test mode uses address 0, `mip` install via `package.json`.
 - Done: milestones 1-3. Packets verified byte-identical to pyflipdot for 84x7, 20x14, 10x9, 5x16 (flip and non-flip).
 - Frames over 255 bytes raise `ValueError` rather than truncating the length.
-- TODO: replace `simonprickett` in `package.json` and README once the GitHub repo exists; hardware bring-up (84x7 @ 4800 baud, then 20x14).
 - MicroPython version: tested target is 1.29.0 on Pico W and Pico 2 W. Unverified expectation of ~1.20+ (mip and rp2 `UART.flush()`);
   the docs give no version-added notes. Only claim what we test; revisit if someone needs an older firmware.
 
@@ -157,20 +156,22 @@ Found by changing one thing at a time, first with a USB-RS485 adapter on a Mac (
 - **Pico + Waveshare Pico-2CH-RS485:** automatic direction control works as documented. Verified: `fill`, `clear`, `set_pixel` with state
   retention, `set_pixels` (a 64-dot border in one frame), `test(True/False)`, 0.3 s frame cadence.
 
-Open items: test the 84x7 sign (address, row layout, whether it needs the blank-frame workaround and what `row_offset` it uses);
-test the Pico 2 W against a sign; consider a minimum-gap helper or rate limit in the driver.
-- 84x7 sign deferred (swapping it in is awkward); do it later on the same 24 V / 5 A supply as the 20x14 sign.
+Open items are listed under "Parked: resume here" at the end.
+- 84x7 sign tested on the same 24 V / 5 A supply as the 20x14 sign: address 6 (the rotary switch was not read, so it is probably 5, matching the 20x14), `row_offset=0`, all-zero frames handled by the same workaround.
 - `min_gap_ms=300` guard added (blocks until the gap has passed). Verified on the 20x14 sign: a loop sending every 0.2 s, which skipped rows before, showed every row.
 - `flip=True` verified on the 20x14 sign (with `row_offset=1`): an L-shape drawn at (0,0) appeared rotated in the bottom-right corner.
 - `mpremote mip install github:simonprickett/mpflipdot` verified on the Pico W, twice: first with the single module, then (after commit `76aa15f`) with all three, `mpflipdot.py`, `mpflipdot_draw.py` and `mpflipdot_text.py`, installed to `/lib` after clearing the board, each byte-identical to the repo file. A script importing only from `/lib` drove the sign (circle plus centred text). The on-board `mip.install` path (Wi-Fi) is still untried.
-- Pico 2 W has not driven a sign yet; planned. The 84x7 sign is also still to do.
+- Pico 2 W has not driven a sign yet; planned.
 - Planned, sometime: try the driver with a single colour Hanover LED sign, to see whether it works with those as well as flip-dot signs. Untested; whether they use the same protocol, and what address, size and row layout they need, is unknown.
 - `examples/demo.py` (seven looping patterns, paced by `min_gap_ms`) watched running on the 20x14 sign; looked right with no skipped frames.
-- **84x7 timing, handled in software:** `min_gap_ms` is now `None` by default, which waits for the previous packet's send time (length x 10 bits / 4800 baud, rounded up) plus `quiet_ms` (100 ms). That gives 284 ms on the 20x14 (88-byte frames, close to the 300 ms known to work) and 467 ms on the 84x7 (176 bytes, 367 ms to send). A number for `min_gap_ms` is the old fixed start-to-start gap; 0 turns it off. 100 ms of quiet is inferred from two data points (0.2 s dropped frames, 0.3 s did not), so it is a setting. Unit-tested (55 tests). Verified on the 20x14 sign (gap 284 ms) with no dropped frames: the 14-row sweep twice (3697 ms both times), 20 frames of 1 dot and 20 of a 14-dot column (5399 and 5400 ms), 20 inverting checkerboards (5418 ms) and 20 random frames alternating 5 and 275 dots (5406 ms). Frame size on the wire is fixed by the sign, so the dot count only changes the load on the sign. The 84x7 run is still to do.
+- **84x7 timing, handled in software:** `min_gap_ms` is now `None` by default, which waits for the previous packet's send time (length x 10 bits / 4800 baud, rounded up) plus `quiet_ms` (100 ms). That gives 284 ms on the 20x14 (88-byte frames, close to the 300 ms known to work) and 467 ms on the 84x7 (176 bytes, 367 ms to send). A number for `min_gap_ms` is the old fixed start-to-start gap; 0 turns it off. 100 ms of quiet is inferred from two data points (0.2 s dropped frames, 0.3 s did not), so it is a setting. Unit-tested (55 tests). Verified on the 20x14 sign (gap 284 ms) with no dropped frames: the 14-row sweep twice (3697 ms both times), 20 frames of 1 dot and 20 of a 14-dot column (5399 and 5400 ms), 20 inverting checkerboards (5418 ms) and 20 random frames alternating 5 and 275 dots (5406 ms). Frame size on the wire is fixed by the sign, so the dot count only changes the load on the sign. The 84x7 sign (address 6, `row_offset=0`) was then checked too: test mode, `fill`, `clear`, a 7-row sweep twice (2817 ms for 7 frames both times, every row lit in order) and `scroll(sign, "HELLO WORLD", step=5)` (13552 ms, no missing frames). At rest on the 84x7: centred, edge-aligned and clipped text and the punctuation glyphs all looked right. Dense frames, `flip=True` and the drawing demos on the 84x7 are still to do.
   Measured rate on the 20x14 with the old fixed gap: ~3.4 fps (14 frames in 4.1 s). Not measured between 0.2 s and 0.3 s.
 - `mpflipdot_draw.py` added: `line(sign, x0, y0, x1, y1, width=1, on=True)` (Bresenham, thickened along the minor axis, clipped to the sign). Unit-tested; `examples/lines.py` watched on the 20x14 sign and looked right. Installs via `package.json` (re-tested with all three modules).
 - Frame skip done: `show()` sends nothing when the frame matches the last one sent (`show(force=True)` overrides, `skip_unchanged=False` disables; `test()` resets it). Ran alongside the text demos on the 20x14 sign with no problems seen; the effect of skipping a repeat frame hasn't been looked at on its own.
 - `mpflipdot_text.py` added: 5x7 font (bit 0 = top; ASCII space to `]`, plus `|` stored just past that run as a special case, ~315 bytes), `text`, `text_width`, `text_centered`, `scroll_frames`, `scroll`. `text_centered` centres on the drawn dots, not the 5-dot cells. Zero is a plain oval (same as O); `'` is a vertical tick; `[ \ ] |` were added later (`( ) < > + # ! - :` were already there). Unit-tested (51 tests in all); font data checked by rendering every glyph as ASCII art. `examples/text.py`, `text_centered` and the added glyphs have been watched on the 20x14 sign and look right.
+
+- `circle(..., aspect=None)` and `FlipDot(..., aspect=1)` added (60 tests): on the 84x7, circles at aspect 1 looked too tall; four were compared side by side (1.0, 1.25, 1.5, 1.75) and 1.25 looked round. `aspect` widens a circle (its height stays `2 * radius + 1`). Not set anywhere by default; the 20x14 was not compared, so its value is unknown.
+- Demos `lines.py` and `shapes.py` ran out of memory on the Pico W at 84 wide because they built long lists of dots; they now set shapes straight into the sign buffer (`frame(*shapes)`), and run fine there with free memory unchanged (~181 KB). `demo.py` still builds lists (e.g. `sparkle`, 588 dots at 84x7) and is untested at that size.
 
 ## Ideas for later (suggested, not started)
 
@@ -180,3 +181,28 @@ test the Pico 2 W against a sign; consider a minimum-gap helper or rate limit in
 - **Multi-sign helper:** a `Display` wrapper treating several signs on one bus as one wider canvas.
 - **Wi-Fi demos (examples only):** NTP clock, weather ticker, message board over HTTP.
 - **Hardware tests waiting on kit:** the 84x7 sign, a Pico 2 W with a second Waveshare board, and a single colour Hanover LED sign.
+
+## Parked: resume here
+
+Paused with the 84x7 sign on the Pico W. A wire to the Waveshare board came loose during a `demo.py` run on the 84x7, and the sign stopped responding to frames. Test mode (a broadcast) then did not start either, which pointed at the data wires. The user will solder the wires properly, then resume.
+
+**State when parked**
+- Changes since the user's last commit are staged in git for them to commit (I never commit). 60 unit tests pass (`python3 -I -m unittest discover -s tests`). The Pico's `/lib` holds the current `mpflipdot.py`, `mpflipdot_draw.py` and `mpflipdot_text.py` (copied by hand after the `mip` install check).
+- The sign may be left in test mode (the last command sent was test-mode start). Send `test(False)` once the wiring works, or power cycle it.
+- Working settings: Pico W, UART0 on GP0/GP1 (`open_uart(0, tx=0, rx=1)`), sign data red to A and black to B. 84x7: `address=6`, `row_offset=0`, `aspect=1.25` for circles. 20x14: `address=6`, `row_offset=1`. Both on a 24 V / 5 A supply. The Pico showed up as `/dev/cu.usbmodem1201`, later `usbmodem1101`.
+
+**On resuming, in this order (one test at a time)**
+1. `test(True)` (broadcast) to prove the wiring, then `test(False)`.
+2. `fill`, then `clear`, at address 6.
+3. Re-run `examples/demo.py` on the 84x7 (`W, H = 84, 7`, no `row_offset`, `ROUNDS = 1`). It ran without errors and with memory unchanged (~182 KB free) when the wiring failed, but the sign's response was not trusted, so it counts as untested. It still builds dot lists (e.g. `sparkle`, 588 dots at 84x7) and could be rewritten like `lines.py` and `shapes.py` if memory is a problem.
+
+**Still to do on the 84x7:** dense frames (alternating checkerboards), `flip=True`, `demo.py`, `bounce.py`, and reading the rotary switch (the sign answered at address 6, so it is probably 5).
+
+**Other open items**
+- Pico 2 W driving a sign (a second Waveshare board is on order).
+- `de_pin`, which needs an RS485 module with DE/RE pins; several signs on one bus.
+- On-board `mip.install(...)` over Wi-Fi.
+- `aspect` for the 20x14 sign was not compared.
+- A single colour Hanover LED sign.
+- Software ideas still not started are in "Ideas for later". The suggested order was a bitmap/sprite blit, scroll pacing, then text extras.
+- Wiring tip: the break hid itself, because the scripts exit with no error whether or not the sign gets a frame (the sign never replies). When a sign stops responding, send test mode first.

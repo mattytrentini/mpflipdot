@@ -59,19 +59,28 @@ def rect(sign, x, y, width, height, solid=False, on=True):
                 yield from _span(sign, x1, x1, py, on)
 
 
-def circle(sign, cx, cy, radius, solid=False, on=True):
-    """Dots for a circle centred on (cx, cy), 2 * radius + 1 dots across, clipped to the sign.
+def circle(sign, cx, cy, radius, solid=False, on=True, aspect=None):
+    """Dots for a circle centred on (cx, cy), 2 * radius + 1 dots tall, clipped to the sign.
 
     An outline by default, 1 dot thick; solid=True fills it. The outline is the edge of the solid disc,
     so the two always match. radius=0 is a single dot. Each dot is returned once.
+
+    aspect stretches it sideways, for signs whose dots are taller than they are wide, so it comes out as an
+    ellipse that looks round: 1.25 makes it 1.25 times as wide as it is tall. None uses sign.aspect if the
+    sign has one, else 1 (exactly 2 * radius + 1 dots across as well).
     """
     if radius < 0:
         raise ValueError("radius")
+    if aspect is None:
+        aspect = getattr(sign, "aspect", 1)
+    if aspect <= 0:
+        raise ValueError("aspect")
     limit = radius * radius + radius
+    a2 = aspect * aspect
     half = []  # half[dy] = how far the disc reaches left and right of the centre on row cy +/- dy
-    x = radius
+    x = int(aspect * (radius + 1))
     for dy in range(radius + 1):
-        while x * x + dy * dy > limit:
+        while x * x > a2 * (limit - dy * dy):
             x -= 1
         half.append(x)
     half.append(-1)  # the row past the end is empty

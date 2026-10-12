@@ -53,7 +53,7 @@ def _packet(cmd, address, data=b""):
 
 
 class FlipDot:
-    def __init__(self, uart, address=1, width=84, height=7, flip=False, auto_show=True, de_pin=None, row_offset=0, min_gap_ms=None, skip_unchanged=True, quiet_ms=100):
+    def __init__(self, uart, address=1, width=84, height=7, flip=False, auto_show=True, de_pin=None, row_offset=0, min_gap_ms=None, skip_unchanged=True, quiet_ms=100, aspect=1):
         """uart: configured UART (see open_uart). address: 0-15.
         flip: sign is mounted upside-down. auto_show: send the frame after every change.
         de_pin: optional Pin to drive RS485 DE/RE for adapters without automatic direction.
@@ -63,6 +63,8 @@ class FlipDot:
         one send to the start of the next (0 turns the guard off). On the 20x14 test sign (88 byte
         frames, ~183 ms to send) 200 ms apart dropped frames and 300 ms was fine.
         quiet_ms: silence the sign needs after a frame (a guess of 100 ms from the 20x14 sign).
+        aspect: only used by mpflipdot_draw.circle: how much wider than tall to draw circles so they look
+        round on this sign (dots taller than wide: more than 1). Nothing in this module uses it.
         skip_unchanged: show() sends nothing if the frame is identical to the last one sent
         (show(force=True) always sends, e.g. to repair a frame the sign dropped).
         """
@@ -81,6 +83,7 @@ class FlipDot:
         self.de_pin = de_pin
         self.min_gap_ms = min_gap_ms
         self.quiet_ms = quiet_ms
+        self.aspect = aspect
         self.skip_unchanged = skip_unchanged
         self._last = None
         self._last_tx = 0  # ms the previous packet took to send

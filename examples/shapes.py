@@ -7,15 +7,17 @@ uart = open_uart(0, tx=0, rx=1)
 # Tested config for the 20x14 sign with rotary switch on 5. Change these for your sign.
 W, H = 20, 14
 sign = FlipDot(uart, address=6, width=W, height=H, row_offset=1, auto_show=False)
+# On the 84x7 sign, add aspect=1.25 here so circles look round (its dots are taller than wide).
 
 ROUNDS = None  # None loops forever; set a number to stop after that many rounds
 CX, CY = W // 2, H // 2
 
 
-def frame(points):
-    """Show exactly these dots (everything else off) as a single frame."""
+def frame(*shapes):
+    """Show exactly these shapes (everything else off) as a single frame. Later shapes win where they overlap."""
     sign.clear()
-    sign.set_pixels(points)
+    for dots in shapes:
+        sign.set_pixels(dots)  # straight into the sign's buffer, so no big lists are built (they run a Pico W out of memory)
     sign.show()
 
 
@@ -32,10 +34,10 @@ def growing_rects():
 
 def nested_rects():
     """Outlines two dots apart, added one at a time."""
-    dots = []
+    sign.clear()
     for i in range(0, min(W, H) // 2, 2):
-        dots += list(rect(sign, i, i, W - 2 * i, H - 2 * i))
-        frame(dots)
+        sign.set_pixels(rect(sign, i, i, W - 2 * i, H - 2 * i))  # added to what is already set
+        sign.show()
 
 
 def growing_circles():
@@ -47,11 +49,12 @@ def growing_circles():
 
 def target():
     """Concentric circles added from the outside in, then a solid dot in the middle."""
-    dots = []
+    sign.clear()
     for n in range(min(CX, CY) - 1, 0, -2):
-        dots += list(circle(sign, CX, CY, n))
-        frame(dots)
-    frame(dots + list(circle(sign, CX, CY, 1, True)))
+        sign.set_pixels(circle(sign, CX, CY, n))
+        sign.show()
+    sign.set_pixels(circle(sign, CX, CY, 1, True))
+    sign.show()
 
 
 def bouncing_ball():
@@ -59,7 +62,7 @@ def bouncing_ball():
     r = 2
     x, y, dx, dy = r, r, 1, 1
     for _ in range(40):
-        frame(list(circle(sign, x, y, r, True)) + list(circle(sign, x, y, r + 1)))
+        frame(circle(sign, x, y, r, True), circle(sign, x, y, r + 1))
         if not r <= x + dx < W - r:
             dx = -dx
         if not r <= y + dy < H - r:
@@ -70,9 +73,8 @@ def bouncing_ball():
 
 def hole_punch():
     """A solid rectangle with a circle of growing size switched off in the middle (on=False)."""
-    solid = list(rect(sign, 0, 0, W, H, True))
     for n in range(0, min(CX, CY)):
-        frame(solid + list(circle(sign, CX, CY, n, True, on=False)))
+        frame(rect(sign, 0, 0, W, H, True), circle(sign, CX, CY, n, True, on=False))
 
 
 rounds = 0

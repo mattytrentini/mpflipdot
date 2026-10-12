@@ -11,10 +11,11 @@ sign = FlipDot(uart, address=6, width=W, height=H, row_offset=1, auto_show=False
 ROUNDS = None  # None loops forever; set a number to stop after that many rounds
 
 
-def frame(points):
-    """Show exactly these dots (everything else off) as a single frame."""
+def frame(*shapes):
+    """Show exactly these shapes (everything else off) as a single frame."""
     sign.clear()
-    sign.set_pixels(points)
+    for dots in shapes:
+        sign.set_pixels(dots)  # straight into the sign's buffer, so no big lists are built
     sign.show()
 
 
@@ -38,7 +39,7 @@ def widths():
 
 def cross():
     for width in (1, 2, 3):
-        frame(list(line(sign, 0, 0, W - 1, H - 1, width)) + list(line(sign, W - 1, 0, 0, H - 1, width)))
+        frame(line(sign, 0, 0, W - 1, H - 1, width), line(sign, W - 1, 0, 0, H - 1, width))
 
 
 def spinner(width):
@@ -53,13 +54,13 @@ def spinner(width):
 
 def fan():
     """Lines from the bottom-left corner sweeping across the top, kept on screen as they build up."""
-    dots = []
+    sign.clear()
     for x in range(0, W, 2):
-        dots += list(line(sign, 0, H - 1, x, 0))
-        frame(dots)
+        sign.set_pixels(line(sign, 0, H - 1, x, 0))  # added to the dots already set, so nothing is kept in a list
+        sign.show()
     for y in range(0, H, 2):
-        dots += list(line(sign, 0, H - 1, W - 1, y))
-        frame(dots)
+        sign.set_pixels(line(sign, 0, H - 1, W - 1, y))
+        sign.show()
 
 
 def offscreen():
