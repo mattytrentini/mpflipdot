@@ -160,7 +160,7 @@ def scroll_frames(sign, string, y=0, scale=1, step=2):
 
 
 def scroll(sign, string, y=0, scale=1, step=2):
-    """Scroll string across the sign once and leave it blank. Blocks; the driver's min_gap_ms sets the pace."""
+    """Scroll string across the sign once and leave it blank. Blocks; the driver's frame gap sets the pace."""
     auto = sign.auto_show
     sign.auto_show = False  # one frame per step, whatever the setting was
     try:

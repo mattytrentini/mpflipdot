@@ -1,4 +1,4 @@
-"""Loops through a set of patterns as fast as the sign allows (the min_gap_ms guard sets the pace)."""
+"""Loops through a set of patterns as fast as the sign allows (the driver's frame gap sets the pace)."""
 import random
 from mpflipdot import FlipDot, open_uart
 

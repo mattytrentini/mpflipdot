@@ -110,6 +110,55 @@ class StateTests(unittest.TestCase):
             mpflipdot.ticks_ms, mpflipdot.sleep_ms = real
         self.assertEqual(sleeps, [200])
 
+    def _timed(self, **kw):
+        """A sign whose clock and sleep are fake: returns (sign, now, sleeps)."""
+        now = [1000]
+        sleeps = []
+        real = mpflipdot.ticks_ms, mpflipdot.sleep_ms
+        mpflipdot.ticks_ms = lambda: now[0]
+        mpflipdot.sleep_ms = lambda ms: (sleeps.append(ms), now.__setitem__(0, now[0] + ms))
+        self.addCleanup(lambda: setattr(mpflipdot, "ticks_ms", real[0]) or setattr(mpflipdot, "sleep_ms", real[1]))
+        return FlipDot(FakeUART(), auto_show=False, **kw), now, sleeps
+
+    def test_auto_gap_follows_frame_size(self):
+        # 20x14 (row_offset 1): 88 bytes = 880 bits = 184 ms at 4800 baud (rounded up), plus 100 ms quiet
+        s, now, sleeps = self._timed(width=20, height=14, row_offset=1, min_gap_ms=None)
+        s.show()
+        s.show(force=True)  # straight away
+        self.assertEqual(sleeps, [284])
+        # 84x7: 176 bytes = 367 ms, plus 100 ms quiet
+        s, now, sleeps = self._timed(width=84, height=7)
+        s.show()
+        s.show(force=True)
+        self.assertEqual(sleeps, [467])
+
+    def test_auto_gap_counts_from_the_start_of_the_send(self):
+        s, now, sleeps = self._timed(width=20, height=14, row_offset=1)
+        s.show()
+        now[0] += 300  # 300 ms passed since the send began: more than the 284 needed
+        s.show(force=True)
+        self.assertEqual(sleeps, [])
+
+    def test_auto_gap_uses_the_previous_packet_size(self):
+        s, now, sleeps = self._timed(width=84, height=7)
+        s.test(True)  # 6 bytes: 13 ms to send (rounded up)
+        s.show()
+        self.assertEqual(sleeps, [113])
+
+    def test_quiet_ms_and_fixed_gap(self):
+        s, now, sleeps = self._timed(width=20, height=14, row_offset=1, quiet_ms=50)
+        s.show()
+        s.show(force=True)
+        self.assertEqual(sleeps, [234])
+        s, now, sleeps = self._timed(width=84, height=7, min_gap_ms=300, quiet_ms=50)  # a number ignores frame size
+        s.show()
+        s.show(force=True)
+        self.assertEqual(sleeps, [300])
+        s, now, sleeps = self._timed(width=84, height=7, min_gap_ms=0)  # off
+        s.show()
+        s.show(force=True)
+        self.assertEqual(sleeps, [])
+
     def test_unchanged_frames_are_not_resent(self):
         u, s = make(width=4, height=7)
         s.set_pixel(1, 1)

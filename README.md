@@ -38,7 +38,7 @@ sign.test(False)
 
 Other options: `row_offset=1` if the sign's top row is bit 1 instead of bit 0, `flip=True` (sign mounted
 upside-down; rotates the picture 180° so (0, 0) stays your top-left), `auto_show=False` (batch changes, then call `sign.show()`), `de_pin=Pin(n, Pin.OUT)` for RS485
-adapters without automatic direction control, `min_gap_ms=300` (see below). Every change resends the whole frame, because the protocol has no
+adapters without automatic direction control, `min_gap_ms` / `quiet_ms` (see "Update rate" below). Every change resends the whole frame, because the protocol has no
 per-dot command; a frame identical to the last one sent is skipped (`show(force=True)` sends it anyway, `skip_unchanged=False` turns skipping off). `set_pixels` sends just one frame for the whole batch. Addresses are 0-15 (one hex digit on the
 wire). Several signs on one bus: create one `FlipDot` per address sharing the same UART.
 
@@ -99,7 +99,7 @@ width = text_width("HELLO", scale=1)                  # in dots, e.g. for your o
   `sign.clear(); sign.set_pixels(text(...)); sign.show()`. With `auto_show=True` each of those calls sends its own frame.
   `scroll` handles that itself.
 - `scroll_frames(sign, string, y, scale, step)` yields the dots for each frame, if you want to do something between frames.
-  The frame rate is set by the driver's `min_gap_ms`, so about 3 frames a second: a larger `step` scrolls faster.
+  The frame rate is set by the driver's `min_gap_ms`, so about 3 frames a second on the 20x14 sign (fewer on a bigger one): a larger `step` scrolls faster.
 
 ## Examples
 
@@ -119,8 +119,8 @@ width = text_width("HELLO", scale=1)                  # in dots, e.g. for your o
 | Board | [Raspberry Pi Pico W](https://www.raspberrypi.com/products/raspberry-pi-pico/), [MicroPython 1.29.0](https://micropython.org/download/). **Not yet tested on a Pico 2 W** (the driver imports and runs there, but it hasn't driven a sign); that's planned |
 | RS485 | [Waveshare Pico-2CH-RS485](https://www.waveshare.com/pico-2ch-rs485.htm), channel 0 (UART0, GP0/GP1), sign data red on A, black on B. No direction pin needed |
 | Sign | Hanover Displays Flip Dot 20x14, rotary switch SW2 on 5, 24 V / 5 A supply |
-| Verified | `fill`, `clear`, `set_pixel` (state retained), `set_pixels`, `test(True/False)`, `flip=True` (an L at (0,0) appeared in the opposite corner), `examples/demo.py` and `examples/lines.py` on the sign, `mpflipdot_draw.line`, `rect`/`circle` (`examples/shapes.py`), `examples/bounce.py`, `examples/text.py` (scrolling, positioned and centred text, every punctuation glyph added so far, ink-centring), skipping of repeated frames, 0.3 s between frames and the `min_gap_ms` guard (a 0.2 s loop was slowed to 0.3 s and every row showed) |
-| Not yet tested | a Pico 2 W driving a sign, the 84x7 sign, `de_pin`, several signs on one bus |
+| Verified | `fill`, `clear`, `set_pixel` (state retained), `set_pixels`, `test(True/False)`, `flip=True` (an L at (0,0) appeared in the opposite corner), `examples/demo.py` and `examples/lines.py` on the sign, `mpflipdot_draw.line`, `rect`/`circle` (`examples/shapes.py`), `examples/bounce.py`, `examples/text.py` (scrolling, positioned and centred text, every punctuation glyph added so far, ink-centring), skipping of repeated frames, 0.3 s between frames and the fixed `min_gap_ms=300` guard (a 0.2 s loop was slowed to 0.3 s and every row showed). The automatic gap (frame send time + `quiet_ms`, 284 ms here) is verified on the 20x14: a 14-row sweep run twice, a single dot against a full 14-dot column, 20 alternating checkerboards (all 280 dots flip every frame) and 20 random frames alternating 5 and 275 dots, each frame showing in order with none dropped. Timings were as predicted (14 frames in 3.70 s, 20 frames in about 5.4 s) |
+| Not yet tested | a Pico 2 W driving a sign, the 84x7 sign (including its automatic frame gap), `de_pin`, several signs on one bus |
 
 ## Sign quirks
 
@@ -136,10 +136,14 @@ These came out of testing on the 20x14 sign and may differ on other signs, so ch
   unresponsive (no clicking, nothing changes) even though the wiring and code are fine, which looks just like a
   signalling problem. In testing a 24 V / 5 A supply was reliable and a 24 V / 1 A supply was not. If frames go
   missing or the sign seems dead, check the supply before the wiring.
-- **Update rate.** Wait at least about 0.3 s between frames. At 0.2 s the sign skipped frames. One frame takes about
-  0.18 s just to send at 4800 baud (84x7 frames are the same size or smaller, so should do no worse). The driver
-  enforces this: `min_gap_ms=300` makes a send wait until that long after the previous one, so a fast loop is slowed
-  down, not dropped, and the last update always lands. Use `min_gap_ms=0` to turn it off.
+- **Update rate.** The sign needs a quiet moment after each frame. On the 20x14 sign frames 0.3 s apart were fine and
+  at 0.2 s it skipped them. One 88-byte frame takes about 0.18 s just to send at 4800 baud, so that leaves roughly
+  0.1 s of quiet. The driver works the same way for any size: by default (`min_gap_ms=None`) a send waits until the
+  previous frame has finished going out plus `quiet_ms` (100 ms), which is about 0.28 s on the 20x14 sign (verified) and
+  about 0.47 s on an 84x7 (176 bytes, 0.37 s to send; not tried on the sign yet). A fast loop is slowed down, not dropped, and the last update
+  always lands. `quiet_ms=100` is a guess from the 20x14 sign, so raise it if a bigger sign still drops frames. A
+  number for `min_gap_ms` is a fixed gap from the start of one send to the start of the next, and `min_gap_ms=0`
+  turns the guard off.
 - **USB-RS485 adapters on a computer** (for debugging): keep the port open for a few seconds after the last write,
   or the final frame can be lost.
 

@@ -53,13 +53,16 @@ def _packet(cmd, address, data=b""):
 
 
 class FlipDot:
-    def __init__(self, uart, address=1, width=84, height=7, flip=False, auto_show=True, de_pin=None, row_offset=0, min_gap_ms=300, skip_unchanged=True):
+    def __init__(self, uart, address=1, width=84, height=7, flip=False, auto_show=True, de_pin=None, row_offset=0, min_gap_ms=None, skip_unchanged=True, quiet_ms=100):
         """uart: configured UART (see open_uart). address: 0-15.
         flip: sign is mounted upside-down. auto_show: send the frame after every change.
         de_pin: optional Pin to drive RS485 DE/RE for adapters without automatic direction.
         row_offset: bit position of the top row in each column (1 for the 20x14 test sign).
-        min_gap_ms: minimum time between sends; later sends wait (0 turns this off). The
-        20x14 test sign skipped frames sent 200 ms apart but kept up at 300 ms.
+        min_gap_ms: None (the default) waits for the previous frame to finish sending plus quiet_ms
+        of silence, so the gap grows with the frame size. A number is a fixed gap from the start of
+        one send to the start of the next (0 turns the guard off). On the 20x14 test sign (88 byte
+        frames, ~183 ms to send) 200 ms apart dropped frames and 300 ms was fine.
+        quiet_ms: silence the sign needs after a frame (a guess of 100 ms from the 20x14 sign).
         skip_unchanged: show() sends nothing if the frame is identical to the last one sent
         (show(force=True) always sends, e.g. to repair a frame the sign dropped).
         """
@@ -77,17 +80,21 @@ class FlipDot:
         self.auto_show = auto_show
         self.de_pin = de_pin
         self.min_gap_ms = min_gap_ms
+        self.quiet_ms = quiet_ms
         self.skip_unchanged = skip_unchanged
         self._last = None
+        self._last_tx = 0  # ms the previous packet took to send
         self._sent = None  # the last frame sent, to spot repeats
         self._buf = bytearray(width * self._bpc)  # wire layout: column-major, bit0 = top row
 
     def _write(self, packet):
-        if self.min_gap_ms and self._last is not None:
-            wait = self.min_gap_ms - ticks_diff(ticks_ms(), self._last)
+        gap = self._last_tx + self.quiet_ms if self.min_gap_ms is None else self.min_gap_ms
+        if gap and self._last is not None:
+            wait = gap - ticks_diff(ticks_ms(), self._last)
             if wait > 0:
                 sleep_ms(wait)
         self._last = ticks_ms()
+        self._last_tx = (len(packet) * 10 * 1000 + BAUD - 1) // BAUD  # 10 bits a byte on the wire, rounded up
         if self.de_pin:
             self.de_pin.value(1)
         self.uart.write(packet)

@@ -21,7 +21,7 @@ try:
     while True:
         sign.clear()
         sign.set_pixels(circle(sign, x // SCALE, y // SCALE, RADIUS, True))
-        sign.show()  # the driver's min_gap_ms keeps this within what the sign can take
+        sign.show()  # the driver's frame gap keeps this within what the sign can take
         x += vx
         y += vy
         if x < left or x > right:
