@@ -158,7 +158,7 @@ These came out of testing on the 20x14 sign and may differ on other signs, so ch
 mpremote mip install github:simonprickett/mpflipdot
 ```
 
-(verified on a Pico W: it installs `/lib/mpflipdot.py`), or, on the board: `import mip; mip.install("github:simonprickett/mpflipdot")`. Or just copy `mpflipdot.py` to the board.
+(verified on a Pico W: it installs `mpflipdot.py`, `mpflipdot_draw.py` and `mpflipdot_text.py` into `/lib`, and a script importing from them drove the sign), or, on the board: `import mip; mip.install("github:simonprickett/mpflipdot")` (not tried yet; needs Wi-Fi). Or just copy `mpflipdot.py` to the board; the drawing and text modules are optional extras you copy the same way.
 
 Run the tests (CPython, no hardware): `python3 -m unittest discover -s tests`.
 

@@ -162,7 +162,7 @@ test the Pico 2 W against a sign; consider a minimum-gap helper or rate limit in
 - 84x7 sign deferred (swapping it in is awkward); do it later on the same 24 V / 5 A supply as the 20x14 sign.
 - `min_gap_ms=300` guard added (blocks until the gap has passed). Verified on the 20x14 sign: a loop sending every 0.2 s, which skipped rows before, showed every row.
 - `flip=True` verified on the 20x14 sign (with `row_offset=1`): an L-shape drawn at (0,0) appeared rotated in the bottom-right corner.
-- `mpremote mip install github:simonprickett/mpflipdot` verified on the Pico W: installed `/lib/mpflipdot.py`, byte-identical to the repo file, and drove the sign.
+- `mpremote mip install github:simonprickett/mpflipdot` verified on the Pico W, twice: first with the single module, then (after commit `76aa15f`) with all three, `mpflipdot.py`, `mpflipdot_draw.py` and `mpflipdot_text.py`, installed to `/lib` after clearing the board, each byte-identical to the repo file. A script importing only from `/lib` drove the sign (circle plus centred text). The on-board `mip.install` path (Wi-Fi) is still untried.
 - Pico 2 W has not driven a sign yet; planned. The 84x7 sign is also still to do.
 - Planned, sometime: try the driver with a single colour Hanover LED sign, to see whether it works with those as well as flip-dot signs. Untested; whether they use the same protocol, and what address, size and row layout they need, is unknown.
 - `examples/demo.py` (seven looping patterns, paced by `min_gap_ms`) watched running on the 20x14 sign; looked right with no skipped frames.
@@ -171,7 +171,7 @@ test the Pico 2 W against a sign; consider a minimum-gap helper or rate limit in
   so a 300 ms gap would send frames back to back with no processing time and probably drop them. If that happens, time the gap from the end of
   transmission instead (quiet gap of roughly 100 ms plus the frame's send time, which the driver can compute from the frame size).
   Measured rate on the 20x14: ~3.4 fps (14 frames in 4.1 s). Not measured between 0.2 s and 0.3 s.
-- `mpflipdot_draw.py` added: `line(sign, x0, y0, x1, y1, width=1, on=True)` (Bresenham, thickened along the minor axis, clipped to the sign). Unit-tested; `examples/lines.py` watched on the 20x14 sign and looked right. Install via `package.json` needs a re-test after the next push.
+- `mpflipdot_draw.py` added: `line(sign, x0, y0, x1, y1, width=1, on=True)` (Bresenham, thickened along the minor axis, clipped to the sign). Unit-tested; `examples/lines.py` watched on the 20x14 sign and looked right. Installs via `package.json` (re-tested with all three modules).
 - Frame skip done: `show()` sends nothing when the frame matches the last one sent (`show(force=True)` overrides, `skip_unchanged=False` disables; `test()` resets it). Ran alongside the text demos on the 20x14 sign with no problems seen; the effect of skipping a repeat frame hasn't been looked at on its own.
 - `mpflipdot_text.py` added: 5x7 font (bit 0 = top; ASCII space to `]`, plus `|` stored just past that run as a special case, ~315 bytes), `text`, `text_width`, `text_centered`, `scroll_frames`, `scroll`. `text_centered` centres on the drawn dots, not the 5-dot cells. Zero is a plain oval (same as O); `'` is a vertical tick; `[ \ ] |` were added later (`( ) < > + # ! - :` were already there). Unit-tested (51 tests in all); font data checked by rendering every glyph as ASCII art. `examples/text.py`, `text_centered` and the added glyphs have been watched on the 20x14 sign and look right.
 
