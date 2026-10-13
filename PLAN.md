@@ -206,3 +206,15 @@ Paused with the 84x7 sign on the Pico W. A wire to the Waveshare board came loos
 - A single colour Hanover LED sign.
 - Software ideas still not started are in "Ideas for later". The suggested order was a bitmap/sprite blit, scroll pacing, then text extras.
 - Wiring tip: the break hid itself, because the scripts exit with no error whether or not the sign gets a frame (the sign never replies). When a sign stops responding, send test mode first.
+
+### Next task when resuming (agreed, in this order)
+
+1. **Further testing on the 84x7** (the resume list above): wiring check, then dense frames, `flip=True`, `demo.py`, `bounce.py`, reading the rotary switch.
+2. **Drive both signs, the 20x14 and the 84x7, as fast as possible without dropping frames, with the speed worked out dynamically from the sign size and the data.** Where we are:
+   - The driver already works the gap out per frame: wait for the previous packet's send time (length x 10 bits / 4800 baud, rounded up) plus `quiet_ms` (100), measured from the start of the previous send. Verified with no drops at 284 ms on the 20x14 (88-byte frames) and 467 ms on the 84x7 (176-byte frames, about 2 frames a second).
+   - `quiet_ms=100` is a guess from two data points on the 20x14 only (0.2 s dropped frames and 0.3 s did not, which is about 17 ms and 117 ms of quiet). Nothing between was tried, and the 84x7 may need a different amount. So the fastest safe quiet time is not known for either sign, and may depend on how many dots flip per frame.
+   - Ideas to work through: (a) find the smallest `quiet_ms` that never drops a frame on each sign, using dense, worst-case frames (alternating checkerboards, near-empty then near-full), stepping it down from 100 ms; (b) decide whether the quiet time should be a fixed number, scale with the frame size, or depend on the dots that change since the last frame (the sign flips only dots that change, so a small change may need less time; unconfirmed); (c) check whether `uart.write` returns before the bytes are out on the Pico, which affects when the gap really starts; (d) keep skipping unchanged frames and consider sending nothing for tiny no-op changes; (e) possibly a calibration helper or a speed-test example that sends a numbered sequence a person can check.
+   - A catch: the sign never replies, so a dropped frame can only be seen by a person watching it. Use patterns where a dropped frame is obvious (a moving single dot, alternating inverse checkerboards, a counter) and one test per prompt, as before. Keep the 24 V / 5 A supply: an underpowered sign also drops frames, and that must not be mistaken for a timing limit.
+   - The baud rate is fixed at 4800 as far as we know; the sign's own limits on this are not documented here, so do not assume it can go faster.
+   - Whatever is chosen has to stay doable on the original Pico W, and the 20x14 and 84x7 results should go in the README's "Update rate" quirk and the tested-hardware table.
+
