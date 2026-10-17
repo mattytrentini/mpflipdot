@@ -26,7 +26,7 @@ A minimal [MicroPython](https://micropython.org/) driver for [Hanover Displays](
 ```python
 from mpflipdot import FlipDot, open_uart
 
-uart = open_uart(0, tx=0, rx=1)          # any UART id / pins
+uart = open_uart(1, tx=4, rx=5)          # any UART id / pins (this is channel 1 of the Waveshare board)
 sign = FlipDot(uart, address=6, width=20, height=14, row_offset=1)   # see "Sign quirks" below
 
 sign.clear()
@@ -123,7 +123,7 @@ width = text_width("HELLO", scale=1)                  # in dots, e.g. for your o
 | | |
 |---|---|
 | Board | [Raspberry Pi Pico W](https://www.raspberrypi.com/products/raspberry-pi-pico/), [MicroPython 1.29.0](https://micropython.org/download/). **Not yet tested on a Pico 2 W** (the driver imports and runs there, but it hasn't driven a sign); that's planned |
-| RS485 | [Waveshare Pico-2CH-RS485](https://www.waveshare.com/pico-2ch-rs485.htm), channel 0 (UART0, GP0/GP1), sign data red on A, black on B. No direction pin needed |
+| RS485 | [Waveshare Pico-2CH-RS485](https://www.waveshare.com/pico-2ch-rs485.htm), channel 0 (UART0, GP0/GP1) or channel 1 (UART1, GP4/GP5; the examples use this, verified on the 20x14), sign data red on A, black on B. No direction pin needed |
 | Sign | Hanover Displays Flip Dot 20x14, rotary switch SW2 on 5, 24 V / 5 A supply. Also an 84x7 (address 6, `row_offset=0`, same supply) |
 | Verified | `fill`, `clear`, `set_pixel` (state retained), `set_pixels`, `test(True/False)`, `flip=True` (an L at (0,0) appeared in the opposite corner), `examples/demo.py` and `examples/lines.py` on the sign, `mpflipdot_draw.line`, `rect`/`circle` (`examples/shapes.py`), `examples/bounce.py`, `examples/text.py` (scrolling, positioned and centred text, every punctuation glyph added so far, ink-centring), skipping of repeated frames, 0.3 s between frames and the fixed `min_gap_ms=300` guard (a 0.2 s loop was slowed to 0.3 s and every row showed). The automatic gap (frame send time + `quiet_ms`, 284 ms here) is verified on the 20x14: a 14-row sweep run twice, a single dot against a full 14-dot column, 20 alternating checkerboards (all 280 dots flip every frame) and 20 random frames alternating 5 and 275 dots, each frame showing in order with none dropped. Timings were as predicted (14 frames in 3.70 s, 20 frames in about 5.4 s) |
 | Verified on the 84x7 | manufacturer test mode, `fill`, `clear` (no blank-frame problem), `row_offset=0` (all 7 rows light), the automatic frame gap (7-row sweep, twice, no dropped frames; 7 frames in 2.8 s, about 0.47 s each) `scroll` of `HELLO WORLD` at full width (29 frames in 13.6 s, legible, no missing frames), and at rest: centred text (`HELLO WORLD`, `FLIP DOT`, `12:34`), text at x = 0 and against the right edge, text clipped at the right edge, and the punctuation glyphs; `examples/lines.py` and `examples/shapes.py` (with the demos' dot lists replaced by drawing straight into the buffer, which fixed a `MemoryError` on this wider sign); circles looked too tall at `aspect=1`, and `aspect=1.25` looked right |

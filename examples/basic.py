@@ -1,12 +1,15 @@
 import time
 from mpflipdot import FlipDot, open_uart
 
-# Waveshare Pico-2CH-RS485 channel 0 = UART0 on GP0/GP1; channel 1 = UART1 on GP4/GP5
-uart = open_uart(0, tx=0, rx=1)
-
-# Tested config for the 20x14 sign with rotary switch on 5. Change these for your sign.
+# Settings for your sign and wiring. Currently: Waveshare Pico-2CH-RS485 channel 1 and the 20x14 sign
+# with rotary switch on 5. (Channel 0 is UART 0 on GP0/GP1; channel 1 is UART 1 on GP4/GP5.)
+UART_ID, TX, RX = 1, 4, 5
+ADDRESS = 6
 W, H = 20, 14
-sign = FlipDot(uart, address=6, width=W, height=H, row_offset=1)
+ROW_OFFSET = 1  # 1 for the 20x14 sign, 0 for the 84x7
+
+uart = open_uart(UART_ID, tx=TX, rx=RX)
+sign = FlipDot(uart, address=ADDRESS, width=W, height=H, row_offset=ROW_OFFSET)
 
 sign.clear()
 sign.set_pixel(0, 0, True)

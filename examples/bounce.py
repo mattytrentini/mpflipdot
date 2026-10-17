@@ -2,11 +2,15 @@
 from mpflipdot import FlipDot, open_uart
 from mpflipdot_draw import circle
 
-uart = open_uart(0, tx=0, rx=1)
-
-# Tested config for the 20x14 sign with rotary switch on 5. Change these for your sign.
+# Settings for your sign and wiring. Currently: Waveshare Pico-2CH-RS485 channel 1 and the 20x14 sign
+# with rotary switch on 5. (Channel 0 is UART 0 on GP0/GP1; channel 1 is UART 1 on GP4/GP5.)
+UART_ID, TX, RX = 1, 4, 5
+ADDRESS = 6
 W, H = 20, 14
-sign = FlipDot(uart, address=6, width=W, height=H, row_offset=1, auto_show=False)
+ROW_OFFSET = 1  # 1 for the 20x14 sign, 0 for the 84x7
+
+uart = open_uart(UART_ID, tx=TX, rx=RX)
+sign = FlipDot(uart, address=ADDRESS, width=W, height=H, row_offset=ROW_OFFSET, auto_show=False)
 
 RADIUS = 2  # the ball is 2 * RADIUS + 1 dots across
 SCALE = 4  # positions and speeds are in quarter dots, so the angle isn't a plain 45 degrees
