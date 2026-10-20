@@ -11,12 +11,15 @@ ROW_OFFSET = 1  # 1 for the 20x14 sign, 0 for the 84x7
 uart = open_uart(UART_ID, tx=TX, rx=RX)
 sign = FlipDot(uart, address=ADDRESS, width=W, height=H, row_offset=ROW_OFFSET)
 
-sign.clear()
-sign.set_pixel(0, 0, True)
-sign.set_pixel(W - 1, H - 1, True)  # others keep their state
+sign.fill(0)
+sign.pixel(0, 0, 1)
+sign.pixel(W - 1, H - 1, 1)  # others keep their state
+sign.show()
 time.sleep(2)
 
-sign.set_pixels((x, x % H, 1) for x in range(W))  # diagonal sawtooth, one send
+for x in range(W):
+    sign.pixel(x, x % H, 1)  # diagonal sawtooth
+sign.show()
 time.sleep(2)
 
 sign.test(True)

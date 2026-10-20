@@ -4,5 +4,5 @@
     ["mpflipdot_draw.py", "github:simonprickett/mpflipdot/mpflipdot_draw.py"],
     ["mpflipdot_text.py", "github:simonprickett/mpflipdot/mpflipdot_text.py"]
   ],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

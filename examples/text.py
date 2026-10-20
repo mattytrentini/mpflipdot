@@ -11,32 +11,41 @@ W, H = 20, 14
 ROW_OFFSET = 1  # 1 for the 20x14 sign, 0 for the 84x7
 
 uart = open_uart(UART_ID, tx=TX, rx=RX)
-sign = FlipDot(uart, address=ADDRESS, width=W, height=H, row_offset=ROW_OFFSET, auto_show=False)
+sign = FlipDot(uart, address=ADDRESS, width=W, height=H, row_offset=ROW_OFFSET)
 
 ROUNDS = None  # None loops forever; set a number to stop after that many rounds
 MID = (H - 7) // 2  # top row that centres 7-dot-high text
 
 
-def show(points):
-    """Show exactly these dots (everything else off) as a single frame."""
-    sign.clear()
-    sign.set_pixels(points)
-    sign.show()
-
-
 def positioned():
     """Three characters fit across this sign: place them, then move them about."""
-    show(text_centered(sign, "HI!", MID))
+    sign.fill(0)
+    text_centered(sign, "HI!", MID)
+    sign.show()
     time.sleep(2)
-    for y in list(range(H - 7 + 1)) + list(range(H - 7 - 1, 0, -1)):
-        show(text(sign, "ABC", 1, y))
-    for x in list(range(-6, 4)) + list(range(3, -6, -1)):
-        show(text(sign, "XYZ", x, MID))  # partly off the edge is fine: it is clipped
+    for y in range(H - 7 + 1):
+        sign.fill(0)
+        text(sign, "ABC", 1, y)
+        sign.show()
+    for y in range(H - 8, 0, -1):
+        sign.fill(0)
+        text(sign, "ABC", 1, y)
+        sign.show()
+    for x in range(-6, 4):
+        sign.fill(0)
+        text(sign, "XYZ", x, MID)  # partly off the edge is fine: it is clipped
+        sign.show()
+    for x in range(3, -6, -1):
+        sign.fill(0)
+        text(sign, "XYZ", x, MID)
+        sign.show()
 
 
 def counter():
     for n in range(0, 31):
-        show(text(sign, "%03d" % n, 1, MID))
+        sign.fill(0)
+        text(sign, "%03d" % n, 1, MID)
+        sign.show()
 
 
 def scrolling():
@@ -53,5 +62,5 @@ while ROUNDS is None or rounds < ROUNDS:
     scrolling()
     rounds += 1
 
-sign.clear()
+sign.fill(0)
 sign.show()  # leave the sign blank when ROUNDS runs out

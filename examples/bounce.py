@@ -1,6 +1,5 @@
 """A ball bouncing round the sign forever. Press Ctrl-C to stop (the sign is cleared)."""
 from mpflipdot import FlipDot, open_uart
-from mpflipdot_draw import circle
 
 # Settings for your sign and wiring. Currently: Waveshare Pico-2CH-RS485 channel 1 and the 20x14 sign
 # with rotary switch on 5. (Channel 0 is UART 0 on GP0/GP1; channel 1 is UART 1 on GP4/GP5.)
@@ -10,7 +9,7 @@ W, H = 20, 14
 ROW_OFFSET = 1  # 1 for the 20x14 sign, 0 for the 84x7
 
 uart = open_uart(UART_ID, tx=TX, rx=RX)
-sign = FlipDot(uart, address=ADDRESS, width=W, height=H, row_offset=ROW_OFFSET, auto_show=False)
+sign = FlipDot(uart, address=ADDRESS, width=W, height=H, row_offset=ROW_OFFSET)
 
 RADIUS = 2  # the ball is 2 * RADIUS + 1 dots across
 SCALE = 4  # positions and speeds are in quarter dots, so the angle isn't a plain 45 degrees
@@ -23,8 +22,8 @@ top, bottom = RADIUS * SCALE, (H - 1 - RADIUS) * SCALE
 
 try:
     while True:
-        sign.clear()
-        sign.set_pixels(circle(sign, x // SCALE, y // SCALE, RADIUS, True))
+        sign.fill(0)
+        sign.ellipse(x // SCALE, y // SCALE, RADIUS, RADIUS, 1, True)
         sign.show()  # the driver's frame gap keeps this within what the sign can take
         x += vx
         y += vy
@@ -37,5 +36,5 @@ try:
 except KeyboardInterrupt:
     pass
 finally:
-    sign.clear()
+    sign.fill(0)
     sign.show()

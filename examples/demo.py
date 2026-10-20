@@ -10,71 +10,83 @@ W, H = 20, 14
 ROW_OFFSET = 1  # 1 for the 20x14 sign, 0 for the 84x7
 
 uart = open_uart(UART_ID, tx=TX, rx=RX)
-sign = FlipDot(uart, address=ADDRESS, width=W, height=H, row_offset=ROW_OFFSET, auto_show=False)
+sign = FlipDot(uart, address=ADDRESS, width=W, height=H, row_offset=ROW_OFFSET)
 
 ROUNDS = None  # None loops forever; set a number to stop after that many rounds
 
 
-def frame(points):
-    """Show exactly these dots (everything else off) as a single frame."""
-    sign.clear()
-    sign.set_pixels(points)
+def box(i):
+    """Show the rectangle inset i dots from the edge."""
+    sign.fill(0)
+    sign.rect(i, i, W - 2 * i, H - 2 * i, 1)
     sign.show()
 
 
 def rows_down():
     for y in range(H):
-        frame((x, y, 1) for x in range(W))
+        sign.fill(0)
+        sign.hline(0, y, W, 1)
+        sign.show()
 
 
 def columns_across():
     for x in range(W):
-        frame((x, y, 1) for y in range(H))
-
-
-def box(i):
-    """Outline of the rectangle inset i dots from the edge."""
-    pts = []
-    for x in range(i, W - i):
-        pts += [(x, i, 1), (x, H - 1 - i, 1)]
-    for y in range(i, H - i):
-        pts += [(i, y, 1), (W - 1 - i, y, 1)]
-    return pts
+        sign.fill(0)
+        sign.vline(x, 0, H, 1)
+        sign.show()
 
 
 def boxes():
     steps = (min(W, H) - 1) // 2
-    for i in list(range(steps + 1)) + list(range(steps - 1, 0, -1)):
-        frame(box(i))
+    for i in range(steps + 1):
+        box(i)
+    for i in range(steps - 1, 0, -1):
+        box(i)
 
 
 def checkerboard():
     for n in range(6):
-        frame((x, y, 1) for x in range(W) for y in range(H) if (x + y + n) % 2 == 0)
+        sign.fill(0)
+        for x in range(W):
+            for y in range(H):
+                if (x + y + n) % 2 == 0:
+                    sign.pixel(x, y, 1)
+        sign.show()
 
 
 def diagonal():
     for d in range(W + H - 1):
-        frame((x, d - x, 1) for x in range(W) if 0 <= d - x < H)
+        sign.fill(0)
+        for x in range(max(0, d - H + 1), min(W, d + 1)):
+            sign.pixel(x, d - x, 1)
+        sign.show()
 
 
 def sparkle():
-    dots = [(x, y, 1) for x in range(W) for y in range(H)]
-    for i in range(len(dots) - 1, 0, -1):  # shuffle
+    # Shuffle flat pixel indices, rather than allocating a tuple for every dot.
+    dots = list(range(W * H))
+    for i in range(len(dots) - 1, 0, -1):
         j = random.getrandbits(16) % (i + 1)
         dots[i], dots[j] = dots[j], dots[i]
     step = len(dots) // 8 + 1
-    for n in range(step, len(dots) + step, step):
-        frame(dots[:n])
-    for n in range(len(dots) - step, -step, -step):
-        frame(dots[: max(n, 0)])
+    sign.fill(0)
+    for start in range(0, len(dots), step):
+        for i in range(start, min(start + step, len(dots))):
+            dot = dots[i]
+            sign.pixel(dot % W, dot // W, 1)
+        sign.show()
+    for start in range(len(dots) - 1, -1, -step):
+        for i in range(start, max(start - step, -1), -1):
+            dot = dots[i]
+            sign.pixel(dot % W, dot // W, 0)
+        sign.show()
 
 
 def flash():
     for _ in range(3):
-        sign.fill()
+        sign.fill(1)
         sign.show()
-        sign.clear()
+        sign.fill(0)
         sign.show()
 
 
@@ -84,5 +96,5 @@ while ROUNDS is None or rounds < ROUNDS:
         pattern()
     rounds += 1
 
-sign.clear()
+sign.fill(0)
 sign.show()  # leave the sign blank when ROUNDS runs out

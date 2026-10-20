@@ -10,67 +10,62 @@ W, H = 20, 14
 ROW_OFFSET = 1  # 1 for the 20x14 sign, 0 for the 84x7
 
 uart = open_uart(UART_ID, tx=TX, rx=RX)
-sign = FlipDot(uart, address=ADDRESS, width=W, height=H, row_offset=ROW_OFFSET, auto_show=False)
+sign = FlipDot(uart, address=ADDRESS, width=W, height=H, row_offset=ROW_OFFSET)
 
 ROUNDS = None  # None loops forever; set a number to stop after that many rounds
 
 
-def frame(*shapes):
-    """Show exactly these shapes (everything else off) as a single frame."""
-    sign.clear()
-    for dots in shapes:
-        sign.set_pixels(dots)  # straight into the sign's buffer, so no big lists are built
-    sign.show()
-
-
-def perimeter():
-    """Every dot round the edge of the display, clockwise from the top-left."""
-    return (
-        [(x, 0) for x in range(W)]
-        + [(W - 1, y) for y in range(1, H)]
-        + [(x, H - 1) for x in range(W - 2, -1, -1)]
-        + [(0, y) for y in range(H - 2, 0, -1)]
-    )
 
 
 def widths():
     """The same diagonal at widths 1 to 5."""
     for width in range(1, 6):
-        frame(line(sign, 0, H - 1, W - 1, 0, width))
+        sign.fill(0)
+        line(sign, 0, H - 1, W - 1, 0, width)
+        sign.show()
     for width in range(1, 6):
-        frame(line(sign, 0, H // 2, W - 1, H // 2, width))
+        sign.fill(0)
+        line(sign, 0, H // 2, W - 1, H // 2, width)
+        sign.show()
 
 
 def cross():
     for width in (1, 2, 3):
-        frame(line(sign, 0, 0, W - 1, H - 1, width), line(sign, W - 1, 0, 0, H - 1, width))
+        sign.fill(0)
+        line(sign, 0, 0, W - 1, H - 1, width)
+        line(sign, W - 1, 0, 0, H - 1, width)
+        sign.show()
 
 
 def spinner(width):
     """A line through the middle, turning once."""
-    edge = perimeter()
-    half = len(edge) // 2
-    for i in range(0, half, 2):
-        x0, y0 = edge[i]
-        x1, y1 = edge[i + half]
-        frame(line(sign, x0, y0, x1, y1, width))
+    for i in range(0, W + H - 2, 2):
+        if i < W:
+            x, y = i, 0
+        else:
+            x, y = W - 1, i - W + 1
+        sign.fill(0)
+        line(sign, x, y, W - 1 - x, H - 1 - y, width)
+        sign.show()
 
 
 def fan():
     """Lines from the bottom-left corner sweeping across the top, kept on screen as they build up."""
-    sign.clear()
+    sign.fill(0)
     for x in range(0, W, 2):
-        sign.set_pixels(line(sign, 0, H - 1, x, 0))  # added to the dots already set, so nothing is kept in a list
+        sign.line(0, H - 1, x, 0, 1)
         sign.show()
     for y in range(0, H, 2):
-        sign.set_pixels(line(sign, 0, H - 1, W - 1, y))
+        sign.line(0, H - 1, W - 1, y, 1)
         sign.show()
 
 
 def offscreen():
     """Lines running past the edges are clipped, not rejected."""
     for k in range(-W, W, 3):
-        frame(line(sign, k, -5, k + W, H + 5, 2))
+        sign.fill(0)
+        line(sign, k, -5, k + W, H + 5, 2)
+        sign.show()
 
 
 rounds = 0
@@ -83,5 +78,5 @@ while ROUNDS is None or rounds < ROUNDS:
     offscreen()
     rounds += 1
 
-sign.clear()
+sign.fill(0)
 sign.show()  # leave the sign blank when ROUNDS runs out

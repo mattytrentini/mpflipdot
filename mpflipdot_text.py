@@ -86,14 +86,14 @@ def text_width(string, scale=1):
 
 
 def text(sign, string, x, y, scale=1, on=True):
-    """Dots for string with its top-left corner at (x, y), clipped to the sign.
+    """Draw string with its top-left corner at (x, y), clipped to the sign, without displaying it.
 
     Characters are 5x7 dots, times scale (a whole number: 2 gives 10x14). Lowercase is drawn as
     uppercase and characters the font doesn't have are blank. The corner can be off the sign.
     """
     if scale < 1:
         raise ValueError("scale")
-    w, h = sign.width, sign.height
+    w = sign.width
     for n, ch in enumerate(string.upper()):
         gx = x + n * 6 * scale
         if gx >= w:
@@ -105,13 +105,7 @@ def text(sign, string, x, y, scale=1, on=True):
             bits = _FONT[i * 5 + col]
             for row in range(7):
                 if bits >> row & 1:
-                    for dx in range(scale):
-                        px = gx + col * scale + dx
-                        if 0 <= px < w:
-                            for dy in range(scale):
-                                py = y + row * scale + dy
-                                if 0 <= py < h:
-                                    yield (px, py, on)
+                    sign.rect(gx + col * scale, y + row * scale, scale, scale, int(on), True)
 
 
 def _ink(string):
@@ -129,7 +123,7 @@ def _ink(string):
 
 
 def text_centered(sign, string, y=0, scale=1, on=True):
-    """Dots for string centred left to right on the sign by the dots drawn, with its top at y.
+    """Draw string centred left to right by its visible ink, with its top at y, without displaying it.
 
     Blank columns at the start and end of the text (as in I, 1, . and !) don't count, so what you see is
     centred. Any odd dot left over goes on the right. Too wide to fit: both ends are clipped.
@@ -142,31 +136,18 @@ def text_centered(sign, string, y=0, scale=1, on=True):
     return text(sign, string, x, y, scale, on)
 
 
-def scroll_frames(sign, string, y=0, scale=1, step=2):
-    """Yield the dots for each frame of string scrolling right to left once across the sign.
-
-    The text slides in from the right edge, moving step dots a frame, and the last frame is empty.
-    Show each one as a whole frame: sign.clear(), sign.set_pixels(dots), sign.show().
-    """
+def scroll(sign, string, y=0, scale=1, step=2):
+    """Scroll once right to left and leave the sign blank. Blocks; show() sets the pace."""
     if step < 1:
         raise ValueError("step")
+    if scale < 1:
+        raise ValueError("scale")
     end = -text_width(string, scale)
     x = sign.width - step
     while True:
-        yield text(sign, string, x, y, scale)
+        sign.fill(0)
+        text(sign, string, x, y, scale)
+        sign.show()
         if x <= end:
             break
         x -= step
-
-
-def scroll(sign, string, y=0, scale=1, step=2):
-    """Scroll string across the sign once and leave it blank. Blocks; the driver's frame gap sets the pace."""
-    auto = sign.auto_show
-    sign.auto_show = False  # one frame per step, whatever the setting was
-    try:
-        for dots in scroll_frames(sign, string, y, scale, step):
-            sign.clear()
-            sign.set_pixels(dots)
-            sign.show()
-    finally:
-        sign.auto_show = auto

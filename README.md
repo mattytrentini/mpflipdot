@@ -4,22 +4,19 @@
 
 [Watch a video demo on YouTube](https://www.youtube.com/watch?v=nHq_gT024Bs).
 
-A minimal [MicroPython](https://micropython.org/) driver for [Hanover Displays](https://www.hanoverdisplays.com/) flip-dot signs, aimed at a [Raspberry Pi Pico](https://www.raspberrypi.com/products/raspberry-pi-pico/) (or Pico 2) with an RS485 adapter. No dependencies beyond MicroPython itself.
+A [MicroPython](https://micropython.org/) framebuffer driver for [Hanover Displays](https://www.hanoverdisplays.com/) flip-dot signs, aimed at a Raspberry Pi Pico (or Pico 2) with an RS485 adapter. No dependencies beyond MicroPython's built-in `framebuf`, `time` and `machine` modules.
 
-> **Status:** early but working. Verified on a 20x14 and an 84x7 sign from a Pico W with the Waveshare Pico-2CH-RS485 (see
-> [Tested hardware](#tested-hardware)). The Pico 2 W has not been tested yet. See [PLAN.md](PLAN.md) for protocol notes and design.
+> **Status:** 0.2.0 is a breaking framebuf-based revision. Native MicroPython software checks pass; this revision has not yet driven a physical sign. The previous driver was verified on 20x14 and 84x7 signs with a Pico W and Waveshare Pico-2CH-RS485. See [Tested hardware](#tested-hardware) and [PLAN.md](PLAN.md).
 
 ## Features
 
-- Configurable bus address, width, height (and upside-down mounting) per sign
-- Clear / fill the display
-- Start / stop the manufacturer's test mode (broadcast, address 0)
-- Set a single dot on/off while retaining all others
-- Set many dots (or the whole display) in one update
-- Optional drawing helpers (`mpflipdot_draw.py`): lines of any width, rectangles and circles, each an outline or solid
-- Optional text (`mpflipdot_text.py`): a built-in 5x7 font (A-Z, 0-9 and most punctuation, including brackets and `|`), text at any x, y position (or centred), scaling, and scrolling
-- Everything is clipped to the sign, and `on=False` erases a shape or text instead of drawing it
-- A minimum gap between frames, so the sign doesn't drop updates, and repeat frames are not sent at all
+- A real `framebuf.FrameBuffer` subclass: pixels, lines, rectangles, text, scrolling and blitting use the standard MicroPython API
+- A 2D monochrome canvas with `0` for off and `1` for on; drawing changes RAM, then `show()` sends one complete frame
+- Configurable address, width, height, row offset and upside-down mounting
+- Manufacturer test mode (broadcast, address 0)
+- Optional thick lines (`mpflipdot_draw.py`); native ellipses cover circles and stretched shapes
+- Optional 5x7 text, scaling, ink-based centring and animated scrolling (`mpflipdot_text.py`)
+- Automatic inter-frame timing and suppression of repeated frames, with forced refresh available
 
 ## Usage
 
@@ -29,90 +26,111 @@ from mpflipdot import FlipDot, open_uart
 uart = open_uart(1, tx=4, rx=5)          # any UART id / pins (this is channel 1 of the Waveshare board)
 sign = FlipDot(uart, address=6, width=20, height=14, row_offset=1)   # see "Sign quirks" below
 
-sign.clear()
-sign.set_pixel(10, 3, True)
-sign.set_pixels([(0, 0, 1), (1, 1, 1), (2, 2, 1)])   # one frame sent
-sign.test(True)                                      # manufacturer test mode
+sign.fill(0)
+sign.pixel(10, 3, 1)
+sign.rect(0, 0, 20, 14, 1)
+sign.line(0, 13, 19, 0, 1)
+sign.text("Hi", 2, 3, 1)                 # Native 8x8 font
+sign.show()                              # One complete serial update
+
+state = sign.pixel(10, 3)                 # Read the logical canvas, not the hardware
+sign.test(True)                          # Manufacturer test mode
 sign.test(False)
+sign.show()                              # Restore the canvas after test mode
 ```
 
-Other options: `row_offset=1` if the sign's top row is bit 1 instead of bit 0, `flip=True` (sign mounted
-upside-down; rotates the picture 180° so (0, 0) stays your top-left), `auto_show=False` (batch changes, then call `sign.show()`), `de_pin=Pin(n, Pin.OUT)` for RS485
-adapters without automatic direction control, `min_gap_ms` / `quiet_ms` (see "Update rate" below), `aspect=1.25` (how much wider than tall `circle` draws, for signs whose dots are taller than wide; see Drawing helpers). Every change resends the whole frame, because the protocol has no
-per-dot command; a frame identical to the last one sent is skipped (`show(force=True)` sends it anyway, `skip_unchanged=False` turns skipping off). `set_pixels` sends just one frame for the whole batch. Addresses are 0-15 (one hex digit on the
-wire). Several signs on one bus: create one `FlipDot` per address sharing the same UART.
+All drawing methods are inherited from [MicroPython's framebuf API](https://docs.micropython.org/en/latest/library/framebuf.html); the methods available depend on your firmware. They never transmit automatically. Pass colour `0` to erase. Drawing is clipped by framebuf.
+
+`FlipDot(uart, address=1, width=84, height=7, flip=False, de_pin=None, row_offset=0, min_gap_ms=None, skip_unchanged=True, quiet_ms=100)` accepts:
+
+- `row_offset`: bit position of the top physical row; use `1` on the tested 20x14 sign.
+- `flip=True`: rotate the transmitted image 180 degrees for upside-down mounting. The logical canvas and pixel readback stay top-left.
+- `de_pin`: an optional output Pin for adapters without automatic RS485 direction control.
+- `min_gap_ms` / `quiet_ms`: transmission pacing; see [Sign quirks](#sign-quirks).
+- `skip_unchanged=False`: resend even unchanged frames. With the default, `show(force=True)` forces a refresh after a dropped frame.
+
+Addresses are 0-15. Multiple sign instances may share a UART, but timing guards are per instance, not a shared-bus scheduler. Each transmitted image replaces the whole sign; the protocol has no per-dot write.
+
+`sign.buffer` exposes the logical `MONO_VLSB` bytearray, sized `width * ((height + 7) // 8)`. It is not the serial payload: `show()` converts eight-row bands into column-major bytes, applies rotation and row offset, and masks unused bits. The wire buffer is reused; the logical buffer is never changed by transmission.
 
 ## Drawing helpers
 
-`mpflipdot_draw.py` is installed alongside the driver and has plain functions that return `(x, y, on)` dots for
-`set_pixels`, so a whole shape goes out as one frame:
+Use native `sign.line`, `sign.hline`, `sign.vline`, `sign.rect` and `sign.ellipse` for standard shapes. `mpflipdot_draw.py` only adds thick lines, drawing directly into the canvas:
 
 ```python
 from mpflipdot_draw import line
 
-sign.set_pixels(line(sign, 0, 0, 19, 13))                # width 1
-sign.set_pixels(line(sign, 0, 0, 19, 13, width=3))
-sign.set_pixels(line(sign, 0, 0, 19, 13, on=False))      # erase the same line
+sign.fill(0)
+sign.rect(2, 3, 10, 6, 1, True)               # Native filled rectangle
+line(sign, 0, 0, 19, 13, width=3)
+sign.ellipse(10, 7, 5, 5, 1)                 # Circle outline
+sign.ellipse(10, 7, 3, 3, 0, True)           # Erase a filled circular hole
+sign.show()
 ```
 
-```python
-from mpflipdot_draw import rect, circle
+The line helper returns `None` and never displays automatically. Later drawing wins where shapes overlap; `on=False` erases a thick line.
 
-sign.set_pixels(rect(sign, 2, 3, 10, 6))                       # top-left corner x, y, then width, height (outline)
-sign.set_pixels(rect(sign, 2, 3, 10, 6, solid=True))
-sign.set_pixels(circle(sign, 10, 7, 5))                        # centre x, y, then radius (outline)
-sign.set_pixels(circle(sign, 10, 7, 5, solid=True, on=False))  # a hole: switch the dots off
-```
+Native `ellipse(cx, cy, xr, yr, colour[, fill])` draws circles when the two radii match. Pass `True` for a filled shape and colour `0` to erase. Ellipse rasterisation is native C code rather than a separate Python circle implementation.
 
-Rectangles and circles are outlines one dot thick unless you pass `solid=True`. A circle is `2 * radius + 1` dots tall
-(`radius=0` is a single dot), and its outline is exactly the edge of the solid one. Lines, rectangles and circles are
-all clipped to the sign, and dots later in a list override earlier ones, so you can combine shapes in one frame:
-`set_pixels(list(rect(...)) + list(circle(..., on=False)))`.
+**Round circles.** Dots on some signs are taller than wide. A horizontal stretch of 1.25 looked round with the previous renderer on the 84x7 sign. Express that directly as `sign.ellipse(cx, cy, round(radius * 1.25), radius, 1)`. The radii must be integers, and native ellipse rasterisation differs from the old circle helper, so small shapes may need visual adjustment. The 20x14 sign's dot proportions were not compared.
 
-**Round circles.** Dots on some signs are taller than they are wide, so a circle drawn in dots looks tall and thin. On the 84x7
-sign an `aspect` of 1.25 looked round (1.0, 1.25, 1.5 and 1.75 were compared side by side). Pass it to one call,
-`circle(sign, 42, 3, 3, aspect=1.25)`, or give the sign a default with `FlipDot(..., aspect=1.25)` and every circle on it uses
-that. The circle stays `2 * radius + 1` dots tall and comes out about `aspect` times as wide; the default 1 is a true
-dot-for-dot circle. The 20x14 sign was not compared.
-
-Lines are clipped to the sign, so one that runs past the edge draws the visible part. Width is added across the line
-along its minor axis, so a diagonal comes out about 0.7 of the width you ask for, and an even width puts the extra dot
-below or to the right of the centre line.
+Thick lines expand along their minor axis: diagonal thickness is about 0.7 times the requested width, and an even width puts the extra dot below or to the right of the centre line.
 
 ## Text
 
-`mpflipdot_text.py` (also installed with the driver) has a 5x7 font and works the same way as the drawing helpers: its
-functions return `(x, y, on)` dots for `set_pixels`, clipped to the sign.
+Native `sign.text(string, x, y[, c])` uses fixed 8x8 character cells; the optional colour defaults to `1`. On a seven-row sign the eighth row is clipped; use the optional 5x7 font when the smaller layout matters.
+
+`mpflipdot_text.py` retains the small font, scaling and ink-based centring. Its drawing helpers modify the canvas directly:
 
 ```python
 from mpflipdot_text import text, text_centered, scroll, text_width
 
-sign.set_pixels(text(sign, "HI!", 1, 3))              # top-left corner of the text at x=1, y=3
-sign.set_pixels(text(sign, "OK", 2, 0, scale=2))      # whole-number scale: 2 gives 10x14 characters
-sign.set_pixels(text(sign, "HI!", 1, 3, on=False))    # erase it again
-sign.set_pixels(text_centered(sign, "HI!", 3))        # centred left to right by the dots drawn, top at y=3
-scroll(sign, "HELLO WORLD", y=3)                      # once right to left, one frame per step, ends blank
-scroll(sign, "BIG", y=0, scale=2, step=3)             # step = dots moved per frame (default 2)
-width = text_width("HELLO", scale=1)                  # in dots, e.g. for your own layout
+sign.fill(0)
+text(sign, "OK", 2, 0, scale=2)             # 10x14 characters
+sign.show()
+
+sign.fill(0)
+text_centered(sign, "HI!", y=3)
+sign.show()
+
+scroll(sign, "HELLO WORLD", y=3)             # Blocking animation; ends blank
+scroll(sign, "BIG", y=0, scale=2, step=3)
+width = text_width("HELLO", scale=1)
 ```
 
-- Characters are 5 dots wide with a 1-dot gap, so a 20-dot-wide sign fits three at scale 1. Scrolling is how you show more.
-- `text_centered` centres on the dots drawn, ignoring the blank columns some characters (`I`, `1`, `.`, `!`) leave at their edges; an odd dot left over goes on the right.
-- The zero is a plain oval (no slash), so it matches the letter O.
-- The font covers ASCII space to `]`: `A-Z`, `0-9`, space, and `! " # $ % & ' ( ) * + , - . / : ; < = > ? @ [ \ ]`, plus `|`. Lowercase is
-  drawn as uppercase, and any other character is blank. The table is about 315 bytes.
-- To draw text on a blank sign in one frame, make the sign with `auto_show=False`, then
-  `sign.clear(); sign.set_pixels(text(...)); sign.show()`. With `auto_show=True` each of those calls sends its own frame.
-  `scroll` handles that itself.
-- `scroll_frames(sign, string, y, scale, step)` yields the dots for each frame, if you want to do something between frames.
-  The frame rate is set by the driver's `min_gap_ms`, so about 3 frames a second on the 20x14 sign (fewer on a bigger one): a larger `step` scrolls faster.
+- Characters are 5 dots wide with a 1-dot gap, so a 20-dot-wide sign fits three at scale 1.
+- `text_centered` centres on drawn ink rather than character cells; any odd spare dot goes on the right.
+- Lowercase is drawn as uppercase. The font covers ASCII space through `]`, plus `|`; other characters are blank. Zero is an oval, matching O.
+- `text(..., on=False)` and `text_centered(..., on=False)` erase their glyphs. These helpers return `None`, without sending.
+- `scroll` clears, draws and calls `show()` for each step. The driver's timing guard sets the pace; larger steps scroll faster.
+- For a custom animation, loop over positions and call `fill(0)`, `text(...)`, then `show()`. Native `sign.scroll(dx, dy)` only shifts the canvas; it neither animates nor clears exposed areas automatically.
+
+## Migrating from 0.1.x
+
+0.2.0 removes the old drawing API rather than providing compatibility aliases:
+
+| Previous API | Replacement |
+|---|---|
+| `sign.clear()` | `sign.fill(0)` |
+| `sign.fill()` | `sign.fill(1)` |
+| `sign.set_pixel(x, y, on)` | `sign.pixel(x, y, on)` |
+| `sign.get_pixel(x, y)` | `sign.pixel(x, y)` |
+| `sign.set_pixels(points)` | Draw with native methods or loop over `pixel(...)`, then `show()` |
+| `auto_show` | Removed; call `show()` explicitly |
+| `sign.set_pixels(line(...))` or other helper iterators | Call the helper directly, then `show()` |
+| `mpflipdot_draw.rect(...)` | Native `sign.rect(x, y, w, h, colour[, fill])` |
+| `mpflipdot_draw.circle(..., solid=solid, on=on)` | Native `sign.ellipse(cx, cy, radius, radius, int(on), solid)` |
+| `FlipDot(..., aspect=ratio)` | Removed; choose ellipse radii explicitly, e.g. `round(radius * ratio), radius` |
+| `scroll_frames(...)` | An explicit position/draw/show loop |
+
+Native clipping and pixel access replace the old coordinate checks. Font metrics change if you switch from the optional 5x7 helper to native text. `show(force=True)`, timing options, RS485 direction control and manufacturer test mode remain supported.
 
 ## Examples
 
 - `examples/basic.py`: clear, single dots, a batch update and test mode.
 - `examples/text.py`: centred and positioned text, a counter, and scrolling text at scale 1 and 2.
 - `examples/bounce.py`: a ball bouncing round the sign forever; Ctrl-C clears the sign and stops it.
-- `examples/shapes.py`: loops through rect and circle demos (growing and nested rectangles, circles, a target, a bouncing ball, a hole punched in a solid block).
+- `examples/shapes.py`: loops through native rectangle and ellipse demos (growing and nested rectangles, circles, a target, a bouncing ball, a hole punched in a solid block).
 - `examples/lines.py`: loops through line demos (widths, a cross, spinning lines, a fan, lines clipped at the edges).
 - `examples/demo.py`: loops through patterns (sweeps, boxes, checkerboard, diagonal wipe, sparkle, flash) as fast as
   the sign allows. Run it with `mpremote run examples/demo.py`; edit `W`, `H` and `address` first for your sign.
@@ -120,14 +138,17 @@ width = text_width("HELLO", scale=1)                  # in dots, e.g. for your o
 
 ## Tested hardware
 
-| | |
+The physical results below belong to the **0.1.x driver**, not the framebuf revision.
+
+| Item | Previous physical verification |
 |---|---|
-| Board | [Raspberry Pi Pico W](https://www.raspberrypi.com/products/raspberry-pi-pico/), [MicroPython 1.29.0](https://micropython.org/download/). **Not yet tested on a Pico 2 W** (the driver imports and runs there, but it hasn't driven a sign); that's planned |
-| RS485 | [Waveshare Pico-2CH-RS485](https://www.waveshare.com/pico-2ch-rs485.htm), channel 0 (UART0, GP0/GP1) or channel 1 (UART1, GP4/GP5; the examples use this, verified on the 20x14), sign data red on A, black on B. No direction pin needed |
-| Sign | Hanover Displays Flip Dot 20x14, rotary switch SW2 on 5, 24 V / 5 A supply. Also an 84x7 (address 6, `row_offset=0`, same supply) |
-| Verified | `fill`, `clear`, `set_pixel` (state retained), `set_pixels`, `test(True/False)`, `flip=True` (an L at (0,0) appeared in the opposite corner), `examples/demo.py` and `examples/lines.py` on the sign, `mpflipdot_draw.line`, `rect`/`circle` (`examples/shapes.py`), `examples/bounce.py`, `examples/text.py` (scrolling, positioned and centred text, every punctuation glyph added so far, ink-centring), skipping of repeated frames, 0.3 s between frames and the fixed `min_gap_ms=300` guard (a 0.2 s loop was slowed to 0.3 s and every row showed). The automatic gap (frame send time + `quiet_ms`, 284 ms here) is verified on the 20x14: a 14-row sweep run twice, a single dot against a full 14-dot column, 20 alternating checkerboards (all 280 dots flip every frame) and 20 random frames alternating 5 and 275 dots, each frame showing in order with none dropped. Timings were as predicted (14 frames in 3.70 s, 20 frames in about 5.4 s) |
-| Verified on the 84x7 | manufacturer test mode, `fill`, `clear` (no blank-frame problem), `row_offset=0` (all 7 rows light), the automatic frame gap (7-row sweep, twice, no dropped frames; 7 frames in 2.8 s, about 0.47 s each) `scroll` of `HELLO WORLD` at full width (29 frames in 13.6 s, legible, no missing frames), and at rest: centred text (`HELLO WORLD`, `FLIP DOT`, `12:34`), text at x = 0 and against the right edge, text clipped at the right edge, and the punctuation glyphs; `examples/lines.py` and `examples/shapes.py` (with the demos' dot lists replaced by drawing straight into the buffer, which fixed a `MemoryError` on this wider sign); circles looked too tall at `aspect=1`, and `aspect=1.25` looked right |
-| Not yet tested | a Pico 2 W driving a sign, `de_pin`, several signs on one bus, and on the 84x7: dense frames, `flip=True` and the remaining demos (`demo.py`, which also builds dot lists, and `bounce.py`) |
+| Board | Pico W, MicroPython 1.29.0. Pico 2 W has not driven a sign. |
+| RS485 | Waveshare Pico-2CH-RS485 with automatic direction control; red sign wire on A, black on B. |
+| 20x14 sign | Address 6 (switch 5), `row_offset=1`, 24 V / 5 A. Blank/full images, state retention, rotation, shapes, text, test mode and dense alternating patterns worked. Automatic 284 ms frame spacing showed no dropped frames in the recorded trials. |
+| 84x7 sign | Address 6, `row_offset=0`, same supply. Blank/full images, test mode, row sweeps, text and shape demos worked. Automatic spacing was about 467 ms; `aspect=1.25` looked round. Dense frames, rotation and remaining demos were not fully verified. |
+| Framebuf revision | Native MicroPython 1.29.0-preview Unix execution: mapping, rotation, row-offset boundaries, padding, blank frames, timing, direction-control ordering and helper behavior. All six examples smoke-ran with recording UARTs at 20x14 and 84x7, including bounce interrupt cleanup. No physical sign run yet. |
+
+Physical checks still needed: this revision on both signs, Pico 2 W, manual DE/RE hardware, multiple signs sharing a bus, and on-board Wi-Fi installation.
 
 ## Sign quirks
 
@@ -136,9 +157,7 @@ These came out of testing on the 20x14 sign and may differ on other signs, so ch
 - **Address is the rotary switch plus 1.** Switch on 5 means `address=6`. Address 0 is broadcast, and test mode always uses it.
 - **Row offset.** On the 20x14 sign the top row is bit 1 of each column, not bit 0, so use `row_offset=1`.
   With `row_offset=0` the bottom row stays off. If a row is missing on your sign, try a different offset.
-- **All-zero frames are ignored.** A frame with no dots set does nothing, so a plain "clear" would never take effect.
-  When a frame would be all zero, `show()` sets one bit that lights no dot (bit 0 with `row_offset`, or the first
-  spare bit above the rows), and the display clears as expected. On the 84x7 `row_offset=0` is right and `clear` worked with the same workaround.
+- **All-zero frames are ignored by the tested signs.** For a blank image, `show()` sets an invisible bit in the wire payload (bit 0 with a row offset, or the first spare bit above the rows). The logical framebuffer stays blank. If every bit is a visible row (`row_offset=0` and height divisible by 8), there is no safe spare bit: the driver sends zeros, but clearing such a sign is unverified.
 - **Power it properly.** An underpowered sign behaves unreliably: it drops frames at random, or looks completely
   unresponsive (no clicking, nothing changes) even though the wiring and code are fine, which looks just like a
   signalling problem. In testing a 24 V / 5 A supply was reliable and a 24 V / 1 A supply was not. If frames go
@@ -160,8 +179,7 @@ These came out of testing on the 20x14 sign and may differ on other signs, so ch
 - [Waveshare Pico-2CH-RS485](https://www.waveshare.com/pico-2ch-rs485.htm) (SP3485): channel 0 = UART0 on GP0/GP1, channel 1 = UART1 on GP4/GP5
 - Hanover Displays flip-dot sign, 4800 baud serial, powered from a **24 V / 5 A** supply. A 24 V / 1 A supply made it drop frames
   at random or seem unresponsive, so don't skimp on current (see [Sign quirks](#sign-quirks))
-- MicroPython **1.29.0** (tested on the Pico W; the Pico 2 W is untested with a sign but planned). Older releases are untested; roughly 1.20+ is expected to work
-  (`mip` install and `UART.flush()`, which is only used with `de_pin`), but that hasn't been verified.
+- MicroPython firmware with built-in `framebuf`. The 0.2.0 software checks used the 1.29.0-preview Unix port; previous physical checks used 1.29.0 on Pico W. Older releases and this revision on RP2 hardware are unverified. `UART.flush()` is required only with `de_pin`.
 
 ## Install
 
@@ -169,9 +187,25 @@ These came out of testing on the 20x14 sign and may differ on other signs, so ch
 mpremote mip install github:simonprickett/mpflipdot
 ```
 
-(verified on a Pico W: it installs `mpflipdot.py`, `mpflipdot_draw.py` and `mpflipdot_text.py` into `/lib`, and a script importing from them drove the sign), or, on the board: `import mip; mip.install("github:simonprickett/mpflipdot")` (not tried yet; needs Wi-Fi). Or just copy `mpflipdot.py` to the board; the drawing and text modules are optional extras you copy the same way.
+That command installs the published upstream version, not an unpushed local feature branch. GitHub installation of this revision requires publishing it first; a fork must also update the GitHub owner/repository paths in `package.json`.
 
-Run the tests (CPython, no hardware): `python3 -m unittest discover -s tests`.
+To try a local checkout, create `/lib` on the device if needed, then copy the files:
+
+```sh
+mpremote fs cp mpflipdot.py mpflipdot_draw.py mpflipdot_text.py :/lib/
+```
+
+Only `mpflipdot.py` is required; the drawing and text modules are optional. Firmware must include `framebuf`.
+
+## Development checks
+
+Run the native MicroPython Unix executable from the repository root:
+
+```sh
+micropython tests/run.py
+```
+
+The tests use the real native `framebuf` and recording UARTs; no third-party test framework or framebuffer shim is needed. CPython alone does not provide `framebuf`.
 
 ## Acknowledgements
 

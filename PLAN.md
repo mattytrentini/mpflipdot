@@ -5,15 +5,15 @@ signs, targeting a Raspberry Pi Pico with an RS485 transceiver.
 
 ## Goals
 
-- Pure MicroPython. Only built-ins (`machine.UART`, `machine.Pin`) – no third-party packages.
+- Pure MicroPython. Only built-ins (`framebuf`, `time`, `machine.UART`, `machine.Pin`) – no third-party packages.
 - One small source file (`mpflipdot.py`) that can be copied to the board.
 - Hanover Displays signs only. No attempt to support other vendors.
 - Configurable per sign: bus address, width, height (e.g. 84x7, plus a smaller sign).
 - Public API:
-  - clear the display
+  - native `framebuf.FrameBuffer` drawing on a monochrome 2D canvas
+  - explicit `show()` of a complete image
   - start / stop the manufacturer's test mode
-  - set one dot at (x, y) on/off, preserving all other dots
-  - set many dots from an iterable of `(x, y, on)` (and a way to replace the whole frame)
+  - optional thick lines and a small 5x7 font; circles use native ellipses
 
 ## Protocol (derived from pyflipdot 0.2.2)
 
@@ -34,87 +34,66 @@ STX  CMD ADDR  [payload]  ETX  CHK
   then two's complement (`((sum ^ 0xFF) + 1) & 0xFF`), send as two upper-case ASCII hex digits.
 - Image payload – `LEN` (one byte as 2 hex digits) followed by the pixel bytes
   (each as 2 hex digits). `LEN` is the pixel byte count `& 0xFF`.
-- Pixel bytes are **column-major**: for each column left to right, `ceil(height/8)`
-  bytes, least-significant byte first; within a byte, bit 0 is the topmost row
-  of that 8-row group. Unused high bits in the last byte are 0.
+- Pixel bytes are **column-major**: for each column left to right,
+  `ceil((height + row_offset)/8)` bytes, least-significant byte first; bit 0 is
+  the top physical bit of each eight-row group. Invisible bits are zero except
+  for the blank-frame sentinel.
   Example: 84x7 → 84 bytes → `LEN = 0x54`.
 - Whole-frame writes only: there is no per-dot command, so the driver keeps a
   local framebuffer and resends it.
 
-Items to confirm on real hardware (flagged in the code/docs until verified):
+The pre-framebuf hardware sessions established broadcast test commands, required inter-frame silence, rotation and row offsets. Payloads exceeding 255 bytes are rejected rather than truncating `LEN`. The framebuf cutover preserves these decisions; its new conversion path still needs physical verification.
 
-1. Test-mode commands using address `0` (broadcast) vs. the sign's own address.
-2. Whether signs need an inter-packet delay when updating quickly.
-3. Behaviour of `LEN` when the frame exceeds 255 bytes (reference just truncates; we will raise `ValueError` instead for sizes we know are wrong, or mirror reference – decide after testing).
-4. Upside-down mounting (`flip`) – implemented as optional 180° rotation as in the reference.
-
-## Design
+## Current design: 0.2.0 framebuf cutover
 
 ### Module layout
 
-```
-mpflipdot/
-├── mpflipdot.py        # the driver (single file, deploy this)
-├── examples/
-│   ├── basic.py        # clear, set a pixel, test mode
-│   └── bulk.py         # set_pixels / whole-frame updates
-├── tests/
-│   └── test_mpflipdot.py  # CPython unittest with a fake UART (no hardware)
-├── PLAN.md  README.md  LICENSE  .gitignore
-```
+- `mpflipdot.py`: `FlipDot(framebuf.FrameBuffer)`, UART setup and Hanover packet encoding.
+- `mpflipdot_draw.py`: direct-drawing thick lines.
+- `mpflipdot_text.py`: direct-drawing 5x7 text, scaling, centring and animated scrolling.
+- `examples/`: six scripts using explicit frame updates.
+- `tests/`: native MicroPython behavioral tests, invoked by `micropython tests/run.py`.
 
-### API sketch
+### API
 
 ```python
-from machine import UART, Pin
-from mpflipdot import FlipDot
+from mpflipdot import FlipDot, open_uart
 
-uart = UART(0, baudrate=4800, tx=Pin(0), rx=Pin(1))     # see FlipDot.BAUD
-sign = FlipDot(uart, address=1, width=84, height=7,
-               de_pin=None,        # optional Pin for RS485 driver-enable (DE/RE)
-               flip=False,         # sign mounted upside-down
-               auto_show=True)     # push to sign after each mutating call
-
-sign.clear()                        # all dots off (sends frame)
-sign.fill()                         # all dots on
-sign.test(True) / sign.test(False)  # start / stop manufacturer test mode
-sign.set_pixel(x, y, True)          # others retained
-sign.set_pixels([(0, 0, 1), (5, 3, 0), ...])   # one frame send for the batch
-sign.get_pixel(x, y)                # read from local framebuffer
-sign.show()                         # explicit send of current framebuffer
+sign = FlipDot(open_uart(), address=6, width=20, height=14, row_offset=1)
+sign.fill(0)
+sign.pixel(0, 0, 1)
+sign.rect(2, 2, 8, 6, 1)
+sign.text("Hi", 1, 3, 1)
+sign.show()
+sign.test(True)
+sign.test(False)
+sign.show()
 ```
 
-Design notes:
+Drawing uses inherited framebuf methods and never transmits implicitly. `show(force=True)` resends even an unchanged frame. There are no legacy drawing aliases or `auto_show`; see the README migration table.
 
-- **Framebuffer**: a `bytearray` already in the wire layout (column-major,
-  `ceil(h/8)` bytes per column). `set_pixel` is then one bit operation, and
-  `show()` only has to hex-encode. 84x7 = 84 bytes; trivial RAM on a Pico.
-- **`auto_show`**: default on for simplicity; `set_pixels` always batches into
-  one send. Turn off for manual `show()` control when drawing many things.
-- **Whole-frame replace**: `set_pixels` accepts any iterable of `(x, y, on)`;
-  a full frame is just a long iterable. A `load(rows)` helper for a list of
-  rows of 0/1 may be added if it stays small.
-- **Encoding**: hex via a precomputed 16-char lookup / `"%02X"` into a single
-  preallocated `bytearray` to avoid heap churn; no `ubinascii` dependency needed
-  (though `binascii.hexlify` is acceptable if smaller).
-- **RS485 direction**: optional `de_pin`. Many cheap Pico RS485 modules auto-switch
-  direction (no pin needed); others need DE/RE held high while transmitting.
-  When given, set high → write → wait for TX to drain → set low.
-- **Validation**: bounds-check x/y and address (0–15) with `ValueError`/`IndexError`;
-  keep messages short for MicroPython.
-- **Packet building** is split into pure functions (`_checksum`, `_packet`) so they
-  can be unit-tested on CPython with known byte sequences.
+### Storage and transmission
 
-### Testing
+- The public `buffer` is a native `MONO_VLSB` canvas: eight-row bands across the width, `width * ceil(height / 8)` bytes. Logical coordinates and readback are independent of mounting rotation and physical row offsets.
+- A reusable wire buffer holds `width * ceil((height + row_offset) / 8)` bytes. Each `show()` reorders canvas bands into Hanover columns, reverses columns/bits for 180-degree mounting rotation, and shifts rows into position. Conversion works byte-wise, including partial bands and offsets crossing byte boundaries; it does not build per-pixel tuples.
+- Padding bits are masked before packing. Blank-frame sentinel bits are added only to the wire buffer. When no invisible bit exists, zeros are sent without inventing a visible dot; hardware clearing in that geometry remains unverified.
+- Existing ASCII-hex packets, checksum, frame-size limit (255 payload bytes), automatic/fixed gaps, repeat suppression, force refresh, test-mode invalidation and optional DE/write/flush/RE sequence are retained.
+- Address, positive dimensions, non-negative row offset and payload size are checked. Coordinate behavior comes from native framebuf.
+- Native text uses 8x8 character cells. The optional 5x7 font remains important on seven-row signs. Native drawing signatures are not overridden.
+- Helpers draw directly and return `None`. Duplicate rectangle/circle helpers, the driver's `aspect` option and dot-generator APIs have been removed. Use native `ellipse` with equal radii for circles or explicit horizontal/vertical radii for stretched shapes; its rasterisation differs from the previous circle renderer. Animated `scroll` explicitly clears, draws and sends each step.
 
-1. **Unit tests (CPython, no hardware)** – checksum, packet framing, bit layout for
-   84x7 and a second size (including heights > 8 for multi-byte columns), flip, and
-   state retention across `set_pixel` calls. Cross-check packet bytes against
-   pyflipdot output for the same images (one-off, not a runtime dependency).
-2. **On-device smoke tests** – `examples/basic.py` on the Pico: clear → single dot
-   → test mode on/off, then the bulk example.
+### Verification and release
 
-## Milestones
+- Package version: `0.2.0`, a breaking API revision on branch `framebuf`.
+- Tests run with the real MicroPython 1.29.0-preview Unix `framebuf`, without a framebuffer shim or external test framework. Coverage includes transmitted images across band/offset/rotation boundaries, padding, blanking, repetition/force/test mode, pacing, direction-control order and visible helper behavior.
+- All six examples were smoke-run at 20x14 and 84x7 with recording UARTs, finite rounds, disabled wall-clock waits and an injected keyboard interrupt for bounce. Every emitted packet's checksum/length and each example's final image were checked; bounce cleared after interruption.
+- No physical-sign verification of this revision has occurred. The checkout can be copied to a device; upstream GitHub installation still installs the published upstream code until this revision is merged and published.
+- Hardware acceptance: run basic drawing, full/blank, rotation, dense patterns, small/native text and the demos on both signs. Observe dropped frames physically: the protocol provides no acknowledgement.
+
+## Historical 0.1.x milestones
+
+The sections below preserve earlier development and hardware sessions. Their API names, test commands, worktree/device state and pending items describe the pre-framebuf driver, not this revision. Current usage and verification are above and in README.
+
 
 1. Repo scaffolding (this commit): PLAN, README, LICENSE, .gitignore.
 2. `mpflipdot.py` core: packet encoding, framebuffer, `clear`, `set_pixel`, `set_pixels`, `test`.
@@ -129,7 +108,7 @@ Design notes:
 - Is the Node.js library worth looking at? Only if hardware testing disagrees with the pyflipdot-derived protocol.
 - Packaging: plain file copy only, or also `mip` install support (`package.json`)?
 
-## Status / decisions (update)
+## Historical 0.1.x status / decisions
 
 - Decided: Pico W / 2 W, Waveshare Pico-2CH-RS485 (no DE/RE pin in its pin table, so assumed auto direction; `de_pin` stays optional),
   pins configurable via `open_uart(uart_id, tx, rx)`, addresses/sizes configurable, test mode uses address 0, `mip` install via `package.json`.
@@ -176,13 +155,13 @@ Open items are listed under "Parked: resume here" at the end.
 ## Ideas for later (suggested, not started)
 
 - **Bigger font / more text:** a taller or bolder font for the 84x7 sign, more symbols, right-aligned text, vertical centring. (`text_centered` already centres on the ink of the fixed-width font; a proportional font would need its own widths.)
-- **Bitmap / sprite blit:** draw a small image from bytes or strings at x, y, with transparency. Base for icons and simple games.
+- **Bitmap / sprite blit:** now provided by native framebuf in 0.2.0; no separate helper is needed.
 - **Scroll pacing:** pick the scroll step from the sign width so it feels smooth at ~3 fps; vertical scroll.
 - **Multi-sign helper:** a `Display` wrapper treating several signs on one bus as one wider canvas.
 - **Wi-Fi demos (examples only):** NTP clock, weather ticker, message board over HTTP.
 - **Hardware tests waiting on kit:** the 84x7 sign, a Pico 2 W with a second Waveshare board, and a single colour Hanover LED sign.
 
-## Parked: resume here
+## Historical parked hardware session
 
 Paused with the 84x7 sign on the Pico W. A wire to the Waveshare board came loose during a `demo.py` run on the 84x7, and the sign stopped responding to frames. Test mode (a broadcast) then did not start either, which pointed at the data wires. The user will solder the wires properly, then resume.
 

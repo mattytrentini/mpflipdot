@@ -1,18 +1,7 @@
-"""MicroPython driver for Hanover Displays flip-dot signs (RS485, 4800 baud)."""
+"""Monochrome framebuf driver for Hanover flip-dot signs (RS485, 4800 baud)."""
 
-try:
-    from time import ticks_ms, ticks_diff, sleep_ms
-except ImportError:  # CPython, used by the unit tests
-    from time import monotonic, sleep
-
-    def ticks_ms():
-        return int(monotonic() * 1000)
-
-    def ticks_diff(a, b):
-        return a - b
-
-    def sleep_ms(ms):
-        sleep(ms / 1000)
+import framebuf
+from time import ticks_ms, ticks_diff, sleep_ms
 
 
 BAUD = 4800
@@ -52,10 +41,15 @@ def _packet(cmd, address, data=b""):
     return p
 
 
-class FlipDot:
-    def __init__(self, uart, address=1, width=84, height=7, flip=False, auto_show=True, de_pin=None, row_offset=0, min_gap_ms=None, skip_unchanged=True, quiet_ms=100, aspect=1):
+class FlipDot(framebuf.FrameBuffer):
+    """A logical monochrome canvas; call show() to update the physical sign."""
+
+    def __init__(
+        self, uart, address=1, width=84, height=7, flip=False, de_pin=None,
+        row_offset=0, min_gap_ms=None, skip_unchanged=True, quiet_ms=100,
+    ):
         """uart: configured UART (see open_uart). address: 0-15.
-        flip: sign is mounted upside-down. auto_show: send the frame after every change.
+        flip: sign is mounted upside-down; drawing coordinates stay top-left.
         de_pin: optional Pin to drive RS485 DE/RE for adapters without automatic direction.
         row_offset: bit position of the top row in each column (1 for the 20x14 test sign).
         min_gap_ms: None (the default) waits for the previous frame to finish sending plus quiet_ms
@@ -63,13 +57,13 @@ class FlipDot:
         one send to the start of the next (0 turns the guard off). On the 20x14 test sign (88 byte
         frames, ~183 ms to send) 200 ms apart dropped frames and 300 ms was fine.
         quiet_ms: silence the sign needs after a frame (a guess of 100 ms from the 20x14 sign).
-        aspect: only used by mpflipdot_draw.circle: how much wider than tall to draw circles so they look
-        round on this sign (dots taller than wide: more than 1). Nothing in this module uses it.
         skip_unchanged: show() sends nothing if the frame is identical to the last one sent
         (show(force=True) always sends, e.g. to repair a frame the sign dropped).
         """
         if not 0 <= address <= 15:
             raise ValueError("address 0-15")
+        if row_offset < 0:
+            raise ValueError("row_offset must be non-negative")
         self._bpc = (height + row_offset + 7) // 8  # bytes per column
         if width < 1 or height < 1 or width * self._bpc > 255:
             raise ValueError("bad size")
@@ -79,16 +73,17 @@ class FlipDot:
         self.height = height
         self.flip = flip
         self.row_offset = row_offset
-        self.auto_show = auto_show
         self.de_pin = de_pin
         self.min_gap_ms = min_gap_ms
         self.quiet_ms = quiet_ms
-        self.aspect = aspect
         self.skip_unchanged = skip_unchanged
         self._last = None
         self._last_tx = 0  # ms the previous packet took to send
         self._sent = None  # the last frame sent, to spot repeats
-        self._buf = bytearray(width * self._bpc)  # wire layout: column-major, bit0 = top row
+        self._pages = (height + 7) // 8
+        self.buffer = bytearray(width * self._pages)
+        self._wire = bytearray(width * self._bpc)
+        super().__init__(self.buffer, width, height, framebuf.MONO_VLSB)
 
     def _write(self, packet):
         gap = self._last_tx + self.quiet_ms if self.min_gap_ms is None else self.min_gap_ms
@@ -105,67 +100,46 @@ class FlipDot:
             self.uart.flush()
             self.de_pin.value(0)
 
-    def _pos(self, x, y):
-        if not (0 <= x < self.width and 0 <= y < self.height):
-            raise IndexError("out of range")
-        if self.flip:
-            x = self.width - 1 - x
-            y = self.height - 1 - y
-        y += self.row_offset
-        return x * self._bpc + (y >> 3), 1 << (y & 7)
-
-    def _changed(self):
-        if self.auto_show:
-            self.show()
+    def _pack(self):
+        """Reorder eight-row bands into wire columns, without changing the canvas."""
+        buf = self._wire
+        for i in range(len(buf)):
+            buf[i] = 0
+        for page in range(self._pages):
+            # Mask the partial final band before rotating or shifting it.
+            mask = (1 << min(8, self.height - page * 8)) - 1
+            top = self.height - (page + 1) * 8 if self.flip else page * 8
+            top += self.row_offset
+            byte = top >> 3
+            shift = top & 7
+            for x in range(self.width):
+                value = self.buffer[page * self.width + x] & mask
+                column = x
+                if self.flip:
+                    column = self.width - 1 - x
+                    value = ((value & 0x55) << 1) | ((value >> 1) & 0x55)
+                    value = ((value & 0x33) << 2) | ((value >> 2) & 0x33)
+                    value = (value << 4 | value >> 4) & 0xFF
+                base = column * self._bpc
+                # A rotated partial band can begin above row zero (byte == -1).
+                if byte >= 0:
+                    buf[base + byte] |= (value << shift) & 0xFF
+                if shift and byte + 1 < self._bpc:
+                    buf[base + byte + 1] |= value >> (8 - shift)
 
     def show(self, force=False):
         """Send the current frame to the sign (nothing if it's unchanged since the last send, unless force)."""
-        buf = self._buf
+        self._pack()
+        buf = self._wire
         p = 0 if self.row_offset else self.height  # first bit that is not a visible row
         if p < 8 * self._bpc and not any(buf):
             # the sign ignores all-zero frames, so set a bit that lights no dot
-            buf = bytearray(buf)
             buf[p >> 3] |= 1 << (p & 7)
         if self.skip_unchanged and not force and self._sent == buf:
             return
         self._write(_packet(_CMD_WRITE, self.address, buf))
         self._sent = bytes(buf)
 
-    def clear(self):
-        """All dots off."""
-        for i in range(len(self._buf)):
-            self._buf[i] = 0
-        self._changed()
-
-    def fill(self):
-        """All dots on."""
-        v = ((1 << self.height) - 1) << self.row_offset
-        for x in range(self.width):
-            for b in range(self._bpc):
-                self._buf[x * self._bpc + b] = (v >> (8 * b)) & 0xFF
-        self._changed()
-
-    def get_pixel(self, x, y):
-        i, m = self._pos(x, y)
-        return bool(self._buf[i] & m)
-
-    def _set(self, x, y, on):
-        i, m = self._pos(x, y)
-        if on:
-            self._buf[i] |= m
-        else:
-            self._buf[i] &= ~m
-
-    def set_pixel(self, x, y, on=True):
-        """Set one dot; all others keep their state."""
-        self._set(x, y, on)
-        self._changed()
-
-    def set_pixels(self, pixels):
-        """pixels: iterable of (x, y, on). One frame is sent for the whole batch."""
-        for x, y, on in pixels:
-            self._set(x, y, on)
-        self._changed()
 
     def test(self, on=True):
         """Start or stop the manufacturer's test mode (broadcast to all signs)."""
