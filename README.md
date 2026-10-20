@@ -6,8 +6,8 @@
 
 A minimal [MicroPython](https://micropython.org/) driver for [Hanover Displays](https://www.hanoverdisplays.com/) flip-dot signs, aimed at a [Raspberry Pi Pico](https://www.raspberrypi.com/products/raspberry-pi-pico/) (or Pico 2) with an RS485 adapter. No dependencies beyond MicroPython itself.
 
-> **Status:** early but working. Verified on a 20x14 and an 84x7 sign from a Pico W with the Waveshare Pico-2CH-RS485 (see
-> [Tested hardware](#tested-hardware)). The Pico 2 W has not been tested yet. See [PLAN.md](PLAN.md) for protocol notes and design.
+> **Status:** early but working. Verified on a 20x14 and an 84x7 sign from a Pico W, and on the 20x14 from a Pico 2 W, with the Waveshare Pico-2CH-RS485 (see
+> [Tested hardware](#tested-hardware)). Tested on MicroPython 1.29.0; the non-wireless Pico and Pico 2 should work fine too. See [PLAN.md](PLAN.md) for protocol notes and design.
 
 ## Features
 
@@ -122,12 +122,12 @@ width = text_width("HELLO", scale=1)                  # in dots, e.g. for your o
 
 | | |
 |---|---|
-| Board | [Raspberry Pi Pico W](https://www.raspberrypi.com/products/raspberry-pi-pico/), [MicroPython 1.29.0](https://micropython.org/download/). **Not yet tested on a Pico 2 W** (the driver imports and runs there, but it hasn't driven a sign); that's planned |
+| Board | [Raspberry Pi Pico W](https://www.raspberrypi.com/products/raspberry-pi-pico/) and Pico 2 W, [MicroPython 1.29.0](https://micropython.org/download/) (the Pico 2 W with bare MicroPython and nothing else installed, driving the 20x14 with `examples/demo.py` on channel 1). The non-wireless Pico and Pico 2 are untested but should work fine, as the driver uses nothing wireless-specific |
 | RS485 | [Waveshare Pico-2CH-RS485](https://www.waveshare.com/pico-2ch-rs485.htm), channel 0 (UART0, GP0/GP1) or channel 1 (UART1, GP4/GP5; the examples use this, verified on the 20x14), sign data red on A, black on B. No direction pin needed |
-| Sign | Hanover Displays Flip Dot 20x14, rotary switch SW2 on 5, 24 V / 5 A supply. Also an 84x7 (address 6, `row_offset=0`, same supply) |
+| Sign | Hanover Displays Flip Dot 20x14, rotary switch SW2 on 5 (so `address=6`), 24 V / 5 A supply. Also an 84x7 (`address=6`, `row_offset=0`, same supply) |
 | Verified | `fill`, `clear`, `set_pixel` (state retained), `set_pixels`, `test(True/False)`, `flip=True` (an L at (0,0) appeared in the opposite corner), `examples/demo.py` and `examples/lines.py` on the sign, `mpflipdot_draw.line`, `rect`/`circle` (`examples/shapes.py`), `examples/bounce.py`, `examples/text.py` (scrolling, positioned and centred text, every punctuation glyph added so far, ink-centring), skipping of repeated frames, 0.3 s between frames and the fixed `min_gap_ms=300` guard (a 0.2 s loop was slowed to 0.3 s and every row showed). The automatic gap (frame send time + `quiet_ms`, 284 ms here) is verified on the 20x14: a 14-row sweep run twice, a single dot against a full 14-dot column, 20 alternating checkerboards (all 280 dots flip every frame) and 20 random frames alternating 5 and 275 dots, each frame showing in order with none dropped. Timings were as predicted (14 frames in 3.70 s, 20 frames in about 5.4 s) |
 | Verified on the 84x7 | manufacturer test mode, `fill`, `clear` (no blank-frame problem), `row_offset=0` (all 7 rows light), the automatic frame gap (7-row sweep, twice, no dropped frames; 7 frames in 2.8 s, about 0.47 s each) `scroll` of `HELLO WORLD` at full width (29 frames in 13.6 s, legible, no missing frames), and at rest: centred text (`HELLO WORLD`, `FLIP DOT`, `12:34`), text at x = 0 and against the right edge, text clipped at the right edge, and the punctuation glyphs; `examples/lines.py` and `examples/shapes.py` (with the demos' dot lists replaced by drawing straight into the buffer, which fixed a `MemoryError` on this wider sign); circles looked too tall at `aspect=1`, and `aspect=1.25` looked right |
-| Not yet tested | a Pico 2 W driving a sign, `de_pin`, several signs on one bus, and on the 84x7: dense frames, `flip=True` and the remaining demos (`demo.py`, which also builds dot lists, and `bounce.py`) |
+| Not yet tested | the 84x7 from a Pico 2 W, the non-wireless Pico and Pico 2, `de_pin`, several signs on one bus, and on the 84x7: dense frames, `flip=True` and the remaining demos (`demo.py`, which also builds dot lists, and `bounce.py`) |
 
 ## Sign quirks
 
@@ -156,11 +156,11 @@ These came out of testing on the 20x14 sign and may differ on other signs, so ch
 
 ## Hardware
 
-- Raspberry Pi Pico W or Pico 2 W running MicroPython
+- Raspberry Pi Pico W or Pico 2 W running MicroPython (the non-wireless Pico and Pico 2 should work fine too, but are untested)
 - [Waveshare Pico-2CH-RS485](https://www.waveshare.com/pico-2ch-rs485.htm) (SP3485): channel 0 = UART0 on GP0/GP1, channel 1 = UART1 on GP4/GP5
 - Hanover Displays flip-dot sign, 4800 baud serial, powered from a **24 V / 5 A** supply. A 24 V / 1 A supply made it drop frames
   at random or seem unresponsive, so don't skimp on current (see [Sign quirks](#sign-quirks))
-- MicroPython **1.29.0** (tested on the Pico W; the Pico 2 W is untested with a sign but planned). Older releases are untested; roughly 1.20+ is expected to work
+- MicroPython **1.29.0** (tested on the Pico W and Pico 2 W). Older releases are untested; roughly 1.20+ is expected to work
   (`mip` install and `UART.flush()`, which is only used with `de_pin`), but that hasn't been verified.
 
 ## Install
