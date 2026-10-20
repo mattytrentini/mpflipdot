@@ -196,7 +196,9 @@ Paused with the 84x7 sign on the Pico W. A wire to the Waveshare board came loos
 2. `fill`, then `clear`, at address 6.
 3. Re-run `examples/demo.py` on the 84x7 (`W, H = 84, 7`, no `row_offset`, `ROUNDS = 1`). It ran without errors and with memory unchanged (~182 KB free) when the wiring failed, but the sign's response was not trusted, so it counts as untested. It still builds dot lists (e.g. `sparkle`, 588 dots at 84x7) and could be rewritten like `lines.py` and `shapes.py` if memory is a problem.
 
-**Still to do on the 84x7:** dense frames (alternating checkerboards), `flip=True`, `demo.py`, `bounce.py`, and reading the rotary switch (the sign answered at address 6, so it is probably 5).
+**Resumed (2026-10-20):** the wiring works again. On the 84x7 from the Pico W on Waveshare channel 1 (UART1, GP4/GP5, `open_uart(1, tx=4, rx=5)`; `address=6`, `row_offset=0`) the user confirmed: a test sequence (fill, clear, 7-row sweep, column sweep, four alternating checkerboards, shrinking box), left-aligned `text` ("69 BULWELL"), only the four corner dots (all 84 columns and 7 rows addressed), and the same text with `flip=True` (rotated 180 degrees). One of my scripts showed a blank sign because `text()` only yields dots and I didn't pass them to `set_pixels`.
+
+**Still to do on the 84x7:** `demo.py`, `bounce.py`, and reading the rotary switch (the sign answered at address 6, so it is probably 5).
 
 **Other open items**
 - Pico 2 W on the 84x7, and the non-wireless Pico / Pico 2 (untested, expected to work).
